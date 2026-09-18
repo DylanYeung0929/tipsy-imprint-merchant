@@ -1,0 +1,17 @@
+
+# 本地 secrets（勿提交）
+.dev.vars
+
+# 构建产物与依赖
+node_modules/
+dist/
+.wrangler/
+*.tsbuildinfo
+vite.config.js
+vite.config.d.ts
+.DS_Store
+
+# server/ 本地认证状态与密钥（已退役，仅本地 dev 用）
+server/.pepper
+server/auth.json
+server/data/

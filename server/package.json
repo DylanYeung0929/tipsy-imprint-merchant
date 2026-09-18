@@ -1,0 +1,14 @@
+{
+  "name": "tipsy-imprint-analysis",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "微醺印记 · AI 数据分析服务：接收传感器统计数据，调用 Claude 生成结构化分析报告",
+  "scripts": {
+    "start": "node analysis.mjs"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "latest",
+    "zod": "latest"
+  }
+}

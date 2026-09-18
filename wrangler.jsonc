@@ -1,0 +1,17 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "tipsy-merchant",
+  "compatibility_date": "2026-09-11",
+  "pages_build_output_dir": "./dist",
+  "kv_namespaces": [
+    { "binding": "TIPSY_KV", "id": "b457d85c985a419d80320444017d5738" }
+  ],
+  "d1_databases": [
+    {
+      "binding": "TIPSY_DB",
+      "database_name": "tipsy-telemetry",
+      "database_id": "4c0d424c-674a-4bff-b39c-fe71d3995373"
+    }
+  ],
+  "ai": { "binding": "AI" }
+}

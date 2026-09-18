@@ -1,0 +1,109 @@
+@import "@fontsource/playfair-display/400.css";
+@import "@fontsource/playfair-display/500.css";
+@import "@fontsource/playfair-display/700.css";
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  font-family: "Avenir Next Condensed", "Arial Narrow", "PingFang SC", sans-serif;
+  font-weight: 550;
+  letter-spacing: 0.028em;
+  color-scheme: dark;
+  background: #0d0b0a;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100dvh;
+  background: #0d0b0a;
+  color: #fafaf9;
+}
+
+h1, h2, h3 {
+  letter-spacing: 0.04em;
+}
+
+.display-en {
+  font-family: "Avenir Next Condensed", "Arial Narrow", "Helvetica Neue", sans-serif;
+  font-weight: 750;
+  letter-spacing: 0.065em;
+}
+
+/* 印记卡片专用：自托管 Playfair Display（英文）+ 中文衬线栈，导出图片时字体同源内嵌，保证换行一致 */
+.display-serif {
+  font-family:
+    "Playfair Display",
+    "Didot",
+    "Bodoni 72",
+    Georgia,
+    "Songti SC",
+    "STSong",
+    "SimSun",
+    "Noto Serif CJK SC",
+    serif;
+  font-weight: 500;
+  letter-spacing: 0.015em;
+}
+
+@layer components {
+  .card {
+    @apply rounded-xl border border-white/10 bg-white/[0.03];
+  }
+
+  .card-title {
+    @apply text-sm text-stone-500;
+  }
+
+  .btn-primary {
+    @apply inline-flex items-center gap-2 rounded-lg bg-amber-500 px-4 py-2 text-sm font-semibold text-stone-950 transition-colors hover:bg-amber-400 disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
+  .btn-ghost {
+    @apply inline-flex items-center gap-2 rounded-lg border border-white/15 px-4 py-2 text-sm text-stone-300 transition-colors hover:border-white/30 hover:text-white;
+  }
+
+  .input {
+    @apply rounded-lg border border-white/15 bg-white/[0.04] px-3 py-2 text-sm text-stone-100 placeholder-stone-600 outline-none transition-colors focus:border-amber-400/60;
+  }
+
+  .table-base {
+    @apply w-full border-collapse text-left;
+  }
+
+  .table-base thead th {
+    @apply border-y border-white/10 py-3 text-xs font-normal text-stone-500;
+  }
+
+  .table-base tbody td {
+    @apply border-b border-white/10 py-3.5 text-sm text-stone-300;
+  }
+}
+
+@keyframes assistant-glow {
+  0%,
+  100% {
+    box-shadow:
+      0 10px 15px -3px rgb(245 158 11 / 0.25),
+      0 0 0 0 rgb(251 191 36 / 0.35);
+  }
+  50% {
+    box-shadow:
+      0 10px 15px -3px rgb(245 158 11 / 0.35),
+      0 0 0 10px rgb(251 191 36 / 0);
+  }
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.14);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
