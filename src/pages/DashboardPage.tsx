@@ -15,6 +15,7 @@ import { mockStats } from "../lib/mock";
 import { useLoad } from "../lib/useLoad";
 import {
   Alert,
+  CardHeader,
   EmptyState,
   MatchBar,
   PageHeader,
@@ -192,53 +193,51 @@ export function DashboardPage() {
 
       <section className="mt-8 grid items-start gap-6 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)]">
         <div className="card min-w-0 p-6">
-          <h2 className="text-lg font-semibold text-stone-100">酒款行为对比</h2>
-          <div className="mt-4">
-            <Table
-              columns={[
-                { key: "drink", label: "酒款" },
-                { key: "pickup", label: "平均拿起" },
-                { key: "sip", label: "平均单次饮量" },
-                { key: "shake", label: "摇晃度" },
-                { key: "chug", label: "一饮而尽率" },
-                { key: "duration", label: "平均停留" },
-              ]}
-              minWidth={640}
-              caption="酒款行为对比"
-              loading={pageLoading}
-              isEmpty={rows.length === 0}
-              emptyRow={
-                <tr>
-                  <td colSpan={6} className="border-0">
-                    <EmptyState
-                      icon={BarChart3}
-                      title="暂无行为数据"
-                      description="完成第一场智能酒杯会话后，这里会展示各酒款的行为对比。"
-                      action={
-                        <Link className="btn-ghost" to="/menu">
-                          去配置酒单
-                        </Link>
-                      }
-                    />
-                  </td>
-                </tr>
-              }
-            >
-              {rows.map(({ key, name, s }) => (
-                <tr key={key}>
-                  <td className="text-stone-100">
-                    <span className="mr-3 inline-block size-2 rounded-full bg-amber-400" />
-                    {name}
-                  </td>
-                  <td className="tabular-nums">{s.avgPickupCount} 次</td>
-                  <td className="tabular-nums">{s.avgSipVolume} ml</td>
-                  <td className="tabular-nums">{Math.round(s.avgShake * 100)}%</td>
-                  <td className="tabular-nums">{Math.round(s.chugRate * 100)}%</td>
-                  <td className="tabular-nums">{s.avgDurationMin} min</td>
-                </tr>
-              ))}
-            </Table>
-          </div>
+          <CardHeader title="酒款行为对比" />
+          <Table
+            columns={[
+              { key: "drink", label: "酒款" },
+              { key: "pickup", label: "平均拿起" },
+              { key: "sip", label: "平均单次饮量" },
+              { key: "shake", label: "摇晃度" },
+              { key: "chug", label: "一饮而尽率" },
+              { key: "duration", label: "平均停留" },
+            ]}
+            minWidth={640}
+            caption="酒款行为对比"
+            loading={pageLoading}
+            isEmpty={rows.length === 0}
+            emptyRow={
+              <tr>
+                <td colSpan={6} className="border-0">
+                  <EmptyState
+                    icon={BarChart3}
+                    title="暂无行为数据"
+                    description="完成第一场智能酒杯会话后，这里会展示各酒款的行为对比。"
+                    action={
+                      <Link className="btn-ghost" to="/menu">
+                        去配置酒单
+                      </Link>
+                    }
+                  />
+                </td>
+              </tr>
+            }
+          >
+            {rows.map(({ key, name, s }) => (
+              <tr key={key}>
+                <td className="text-stone-100">
+                  <span className="mr-3 inline-block size-2 rounded-full bg-amber-400" />
+                  {name}
+                </td>
+                <td className="tabular-nums">{s.avgPickupCount} 次</td>
+                <td className="tabular-nums">{s.avgSipVolume} ml</td>
+                <td className="tabular-nums">{Math.round(s.avgShake * 100)}%</td>
+                <td className="tabular-nums">{Math.round(s.chugRate * 100)}%</td>
+                <td className="tabular-nums">{s.avgDurationMin} min</td>
+              </tr>
+            ))}
+          </Table>
           <h3 className="mt-8 text-sm text-stone-500">各酒款平均拿起次数</h3>
           <div className="mt-4">
             <SimpleBarChart
@@ -249,17 +248,19 @@ export function DashboardPage() {
           </div>
         </div>
 
-        <div className="card flex min-w-0 flex-col p-6">
-          <div className="flex items-center justify-between">
-            <h2 className="text-lg font-semibold text-stone-100">AI 经营分析</h2>
-            <button className="btn-primary" onClick={runAnalysis} disabled={loading}>
-              <Sparkles className="size-4" aria-hidden="true" />
-              {loading ? "分析中…" : report ? "重新生成" : "生成分析"}
-            </button>
-          </div>
+        <div className="card flex min-w-0 flex-col p-5">
+          <CardHeader
+            title="AI 经营分析"
+            actions={
+              <button className="btn-primary" onClick={runAnalysis} disabled={loading}>
+                <Sparkles className="size-4" aria-hidden="true" />
+                {loading ? "分析中…" : report ? "重新生成" : "生成分析"}
+              </button>
+            }
+          />
 
           {loading && (
-            <div className="mt-5 space-y-2" data-testid="analyze-progress">
+            <div className="mt-1 space-y-2" data-testid="analyze-progress">
               <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/10">
                 <div
                   className="h-full rounded-full bg-gradient-to-r from-amber-600 to-amber-300"
@@ -276,7 +277,7 @@ export function DashboardPage() {
           {error && <Alert className="mt-4">{error}</Alert>}
 
           {!report && !loading && (
-            <p className="mt-6 text-sm leading-6 text-stone-500">
+            <p className="mt-2 text-sm leading-6 text-stone-500">
               点击「生成分析」将{isReal ? "真实遥测行为数据（会话 + 事件聚合）" : "当前酒款配置与行为统计"}
               与酒单设计初衷发送至 AI 分析服务（Claude），
               返回结构化报告：行为画像、与设计初衷的匹配度及经营建议。
@@ -284,7 +285,7 @@ export function DashboardPage() {
           )}
 
           {report && (
-            <div className="mt-5 flex-1 space-y-5">
+            <div className="mt-1 flex-1 space-y-5">
               <p className="text-xs text-fg-faint">
                 {new Date(report.generatedAt).toLocaleString("zh-CN")} · 来源：
                 <span className={report.source === "claude" ? "text-emerald-400" : "text-amber-400"}>
@@ -299,7 +300,7 @@ export function DashboardPage() {
                   <div key={ins.drinkId} className="rounded-lg border border-white/10 bg-white/[0.03] p-4">
                     <div className="flex items-center justify-between">
                       <p className="font-medium text-stone-100">{ins.drinkName}</p>
-                      <MatchBar value={ins.intentMatch} />
+                      <MatchBar value={ins.intentMatch} label={`${ins.drinkName} 设计初衷匹配度`} />
                     </div>
                     <p className="mt-2 text-xs text-stone-500">{ins.behaviorProfile}</p>
                     <p className="mt-1 text-sm text-stone-300">{ins.intentComment}</p>

@@ -3,7 +3,7 @@ import { RadioTower, Sparkles, Terminal, Waves } from "lucide-react";
 import type { EspEvent, EspSession, EventType } from "../types";
 import { EVENT_TYPE_LABEL } from "../lib/mock";
 import { fetchEspEvents, fetchEspSessions, fetchSessionAiNote } from "../lib/api";
-import { Alert, Badge, PageHeader, Table, eventTypeMeta, sessionStatusMeta } from "../components/ui";
+import { Alert, Badge, CardHeader, PageHeader, Table, eventTypeMeta, sessionStatusMeta } from "../components/ui";
 
 const EVENT_TYPES: EventType[] = ["pickup", "putdown", "sip", "shake", "chug"];
 
@@ -130,16 +130,14 @@ export function DataReceivePage() {
       />
 
       <section className="grid gap-6 xl:grid-cols-2">
-        <div className="card min-w-0 p-6">
-          <div className="flex items-center justify-between">
-            <h2 className="flex items-center gap-2 text-lg font-semibold text-stone-100">
-              <RadioTower className="size-4 text-amber-400" aria-hidden="true" />
-              行为事件流
-            </h2>
-            {selected && (
-              <Badge tone={sessionStatusMeta[status].tone}>{sessionStatusMeta[status].label}</Badge>
-            )}
-          </div>
+        <div className="card min-w-0 p-5">
+          <CardHeader
+            title="行为事件流"
+            icon={RadioTower}
+            actions={
+              selected && <Badge tone={sessionStatusMeta[status].tone}>{sessionStatusMeta[status].label}</Badge>
+            }
+          />
 
           <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
             {sessions.map((s) => (
@@ -233,10 +231,7 @@ export function DataReceivePage() {
 
         <div className="min-w-0 space-y-6">
           <div className="card min-w-0 p-6">
-            <h2 className="flex items-center gap-2 text-lg font-semibold text-stone-100">
-              <Terminal className="size-4 text-amber-400" aria-hidden="true" />
-              上报接口（协议 v1）
-            </h2>
+            <CardHeader title="上报接口（协议 v1）" icon={Terminal} />
             <p className="mt-2 text-sm text-stone-500">
               酒杯固件在会话内按约 1 包/秒批量上报原始采样（HTTP，需 X-Device-Key 头）；seq 递增且幂等，重发同一包安全。
             </p>
@@ -262,9 +257,9 @@ export function DataReceivePage() {
             </div>
           </div>
 
-          <div className="card p-6">
-            <h2 className="text-lg font-semibold text-stone-100">事件识别规则</h2>
-            <p className="mt-1 text-xs text-fg-faint">后端从原始采样实时推导，阈值初值，待实机标定</p>
+          <div className="card p-5">
+            <CardHeader title="事件识别规则" />
+            <p className="text-xs text-fg-faint">后端从原始采样实时推导，阈值初值，待实机标定</p>
             <div className="mt-4 space-y-3">
               {RULES.map(([name, rule]) => (
                 <div key={name} className="flex items-start gap-3 text-sm">

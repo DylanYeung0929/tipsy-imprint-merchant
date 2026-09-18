@@ -6,6 +6,7 @@ import { useLoad } from "../lib/useLoad";
 import {
   Alert,
   Badge,
+  CardHeader,
   ConfirmDialog,
   EmptyState,
   Modal,
@@ -251,22 +252,23 @@ export function MenuConfigPage() {
       )}
 
       <div className="card p-6">
-        <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-stone-100">
-            酒款列表
-            <span className="ml-2 text-xs font-normal text-fg-faint">{drinks.length} 款</span>
-          </h2>
-          <div className="flex items-center gap-3">
-            <button className="btn-ghost" onClick={() => setImportOpen(true)}>
-              <Camera className="size-4" aria-hidden="true" />
-              拍照导入
-            </button>
-            <button className="btn-primary" onClick={openCreate}>
-              <Plus className="size-4" aria-hidden="true" />
-              新增酒款
-            </button>
-          </div>
-        </div>
+        <CardHeader
+          title="酒款列表"
+          meta={`${drinks.length} 款`}
+          stackOnMobile
+          actions={
+            <>
+              <button className="btn-ghost" onClick={() => setImportOpen(true)}>
+                <Camera className="size-4" aria-hidden="true" />
+                拍照导入
+              </button>
+              <button className="btn-primary" onClick={openCreate}>
+                <Plus className="size-4" aria-hidden="true" />
+                新增酒款
+              </button>
+            </>
+          }
+        />
 
         <Table
           columns={[

@@ -1,7 +1,10 @@
 export function SimpleBarChart({
   data,
+  caption = "数据分布",
 }: {
   data: { label: string; value: number; max?: number }[];
+  /** 屏幕阅读器可见的图注（视觉上隐藏） */
+  caption?: string;
 }) {
   if (data.length === 0) {
     return (
@@ -13,23 +16,28 @@ export function SimpleBarChart({
   const max = Math.max(1, ...data.map((d) => d.max ?? d.value));
   const barAreaPx = 112;
   return (
-    <div className="flex items-end gap-2 border-b border-white/10 px-2 pt-1">
-      {data.map((d, i) => (
-        // label 可能重复（酒单未加载时的占位名），索引保证 key 唯一，否则 React 残留旧柱
-        <div key={`${i}-${d.label}`} className="flex min-w-0 flex-1 flex-col items-center gap-2">
-          <span className="text-xs tabular-nums text-stone-500">
-            {d.value}
-          </span>
-          <div
-            className="w-full max-w-12 rounded-t bg-amber-400/70"
-            style={{ height: `${Math.max(4, (d.value / max) * barAreaPx)}px` }}
-            title={`${d.label}: ${d.value}`}
-          />
-          <span className="break-words text-center text-[10px] leading-tight text-stone-500">
-            {d.label}
-          </span>
-        </div>
-      ))}
-    </div>
+    <figure>
+      <div className="flex items-end gap-2 border-b border-white/10 px-2 pt-1">
+        {data.map((d, i) => (
+          // label 可能重复（酒单未加载时的占位名），索引保证 key 唯一，否则 React 残留旧柱
+          <div key={`${i}-${d.label}`} className="flex min-w-0 flex-1 flex-col items-center gap-2">
+            <span className="text-xs tabular-nums text-stone-500">
+              {d.value}
+            </span>
+            <div
+              className="w-full max-w-12 rounded-t bg-amber-400/70"
+              style={{ height: `${Math.max(4, (d.value / max) * barAreaPx)}px` }}
+              title={`${d.label}: ${d.value}`}
+            />
+            <span className="break-words text-center text-2xs leading-tight text-stone-500">
+              {d.label}
+            </span>
+          </div>
+        ))}
+      </div>
+      <figcaption className="sr-only">
+        {caption}：{data.map((d) => `${d.label} ${d.value}`).join("，")}
+      </figcaption>
+    </figure>
   );
 }

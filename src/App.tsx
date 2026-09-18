@@ -79,24 +79,28 @@ function Sidebar({
         <p className="display-en text-xs text-amber-400">TIPSY IMPRINT</p>
         <h1 className="mt-1 text-lg font-semibold text-stone-100">商家数据台</h1>
       </div>
-      <nav className="flex-1 space-y-1 px-3 py-5">
+      <nav className="flex-1 space-y-1 px-3 py-5" aria-label="主导航">
         {nav.map(({ to, label, en, icon: Icon }) => (
           <NavLink
             key={to}
             to={to}
             className={({ isActive }) =>
-              `group flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-colors ${
+              `flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm transition-colors ${
                 isActive
                   ? "bg-amber-500/10 text-amber-300"
                   : "text-stone-400 hover:bg-white/5 hover:text-stone-200"
               }`
             }
           >
-            <Icon className="size-4" aria-hidden="true" />
-            <span className="flex-1">{label}</span>
-            <span className="display-en text-[10px] text-fg-faint group-[.active]:text-amber-500/70">
-              {en}
-            </span>
+            {({ isActive }) => (
+              <>
+                <Icon className="size-4" aria-hidden="true" />
+                <span className="flex-1">{label}</span>
+                <span className={`display-en text-2xs ${isActive ? "text-amber-500/70" : "text-fg-faint"}`}>
+                  {en}
+                </span>
+              </>
+            )}
           </NavLink>
         ))}
       </nav>
@@ -109,7 +113,7 @@ function Sidebar({
         >
           <ExternalLink className="size-4" aria-hidden="true" />
           <span className="flex-1">产品介绍站</span>
-          <span className="display-en text-[10px] text-fg-faint">SITE</span>
+          <span className="display-en text-2xs text-fg-faint">SITE</span>
         </a>
       </div>
       <div className="border-t border-white/10 px-6 py-4">
@@ -203,6 +207,9 @@ export default function App() {
 
   return (
     <div className="min-h-dvh">
+      <a href="#main" className="skip-link">
+        跳到主要内容
+      </a>
       <header className="sticky top-0 z-30 flex h-14 items-center gap-3 border-b border-hairline bg-ink px-4 lg:hidden">
         <button
           type="button"
@@ -224,7 +231,7 @@ export default function App() {
         />
       )}
       <Sidebar username={username} onLogout={handleLogout} open={navOpen} />
-      <main className="min-h-dvh px-4 py-5 lg:ml-56 lg:px-8 lg:py-8">
+      <main id="main" tabIndex={-1} className="min-h-dvh px-4 py-5 outline-none lg:ml-56 lg:px-8 lg:py-8">
         <Routes>
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
           <Route path="/dashboard" element={<DashboardPage />} />

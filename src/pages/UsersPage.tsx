@@ -4,6 +4,7 @@ import { useLoad } from "../lib/useLoad";
 import {
   Alert,
   Badge,
+  CardHeader,
   EmptyState,
   PageHeader,
   Table,
@@ -32,12 +33,14 @@ export function UsersPage() {
       />
 
       <div className="card p-6">
-        <div className="mb-4 flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-stone-100">顾客列表</h2>
-          <span className="text-xs text-fg-faint">
-            {users.length} 位顾客 · 累计 {totalSessions} 次会话
-          </span>
-        </div>
+        <CardHeader
+          title="顾客列表"
+          actions={
+            <span className="text-xs text-fg-faint">
+              {users.length} 位顾客 · 累计 {totalSessions} 次会话
+            </span>
+          }
+        />
 
         {error && (
           <Alert className="mb-4">

@@ -5,6 +5,7 @@ import { fetchEspPackets, fetchEspSessions, stopEspSession } from "../lib/api";
 import {
   Alert,
   Badge,
+  CardHeader,
   EmptyState,
   PageHeader,
   StatCard,
@@ -64,7 +65,7 @@ function LineChart({
         <span className="text-caption text-fg-faint">{unit}</span>
         <span className="ml-auto flex items-center gap-3">
           {series.map((s) => (
-            <span key={s.name} className="flex items-center gap-1.5 text-[11px] text-stone-500">
+            <span key={s.name} className="flex items-center gap-1.5 text-caption text-stone-500">
               <span className="size-1.5 rounded-full" style={{ background: s.color }} />
               {s.name}
               <span className="tabular-nums text-stone-300">
@@ -235,14 +236,13 @@ export function LiveSessionPage() {
 
       <section className="grid gap-6 xl:grid-cols-[320px_1fr]">
         <div className="card min-w-0 p-4">
-          <div className="flex items-center justify-between px-2 pt-1">
-            <h2 className="flex items-center gap-2 text-sm font-semibold text-stone-200">
-              <RadioTower className="size-4 text-amber-400" aria-hidden="true" />
-              体验会话
-            </h2>
-            <span className="text-2xs text-fg-faint">3s 刷新</span>
-          </div>
-          <ul className="mt-3 flex gap-3 overflow-x-auto pb-1 xl:block xl:space-y-2 xl:overflow-visible xl:pb-0">
+          <CardHeader
+            title="体验会话"
+            icon={RadioTower}
+            actions={<span className="text-2xs text-fg-faint">3s 刷新</span>}
+            className="px-2 pt-1"
+          />
+          <ul className="flex gap-3 overflow-x-auto pb-1 xl:block xl:space-y-2 xl:overflow-visible xl:pb-0">
             {sessions.map((s) => {
               const m = statusOf(s);
               return (
@@ -291,7 +291,7 @@ export function LiveSessionPage() {
           )}
           {session && meta && (
             <>
-              <div className="card p-6">
+              <div className="card p-5">
                 <div className="flex flex-wrap items-center gap-3">
                   <h2 className="text-xl font-semibold text-stone-100">{session.drink?.name ?? "未知酒款"}</h2>
                   <Badge tone={meta.tone}>{meta.label}</Badge>

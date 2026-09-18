@@ -1,4 +1,11 @@
-import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type KeyboardEvent as ReactKeyboardEvent,
+  type PointerEvent as ReactPointerEvent,
+} from "react";
 import { Send, Sparkles, X } from "lucide-react";
 import { chatAssistant } from "../lib/api";
 import { drinkStore, sessionStore, userStore } from "../lib/mock";
@@ -147,6 +154,27 @@ export function AiAssistant() {
     }
   };
 
+  // 键盘可达：方向键微调悬浮球位置（16px/次），位置与拖动一致地持久化
+  const onBallKeyDown = (e: ReactKeyboardEvent<HTMLButtonElement>) => {
+    const step = 16;
+    const dx = e.key === "ArrowLeft" ? -step : e.key === "ArrowRight" ? step : 0;
+    const dy = e.key === "ArrowUp" ? -step : e.key === "ArrowDown" ? step : 0;
+    if (!dx && !dy) return;
+    e.preventDefault();
+    const nextY = posRef.current.y + dy;
+    const minY = isMobile && open ? panel.h + 16 + EDGE : null;
+    const next = clampPos(
+      isMobile ? posRef.current.x : posRef.current.x + dx,
+      minY === null ? nextY : Math.max(minY, nextY),
+    );
+    setPos(next);
+    try {
+      localStorage.setItem(POS_KEY, JSON.stringify(next));
+    } catch {
+      // 存储不可用时保持运行
+    }
+  };
+
   const send = async () => {
     const text = input.trim();
     if (!text || pending) return;
@@ -179,6 +207,7 @@ export function AiAssistant() {
           open ? "pointer-events-auto scale-100 opacity-100" : "pointer-events-none scale-90 opacity-0"
         }`}
         aria-hidden={!open}
+        inert={!open}
       >
         <header className="flex items-center gap-3 border-b border-white/10 px-4 py-3">
           <span className="grid size-8 place-items-center rounded-full bg-gradient-to-br from-amber-300 to-amber-600 text-stone-900">
@@ -186,7 +215,7 @@ export function AiAssistant() {
           </span>
           <div>
             <p className="text-sm font-semibold text-stone-100">微醺助手</p>
-            <p className="display-en text-[10px] tracking-[.18em] text-stone-500">AI ASSISTANT</p>
+            <p className="display-en text-2xs tracking-[.18em] text-stone-500">AI ASSISTANT</p>
           </div>
           <button
             type="button"
@@ -198,8 +227,14 @@ export function AiAssistant() {
           </button>
         </header>
 
-        <div ref={listRef} className="flex-1 space-y-3 overflow-y-auto px-4 py-4">
-          <div className="max-w-[85%] rounded-2xl rounded-bl-md border border-white/10 bg-white/[.06] px-3.5 py-2.5 text-[13px] leading-6 text-stone-200">
+        <div
+          ref={listRef}
+          role="log"
+          aria-live="polite"
+          aria-label="对话记录"
+          className="flex-1 space-y-3 overflow-y-auto px-4 py-4"
+        >
+          <div className="max-w-[85%] rounded-2xl rounded-bl-md border border-white/10 bg-white/[.06] px-3.5 py-2.5 text-body leading-6 text-stone-200">
             你好，我是微醺印记 AI 助手。可以问我数据指标含义、经营建议、印记卡片玩法，或结合当前酒单与会话数据的任何问题。
           </div>
           {messages.map((m, i) => (
@@ -207,8 +242,8 @@ export function AiAssistant() {
               key={i}
               className={
                 m.role === "user"
-                  ? "ml-auto max-w-[85%] whitespace-pre-wrap rounded-2xl rounded-br-md border border-amber-400/25 bg-amber-500/15 px-3.5 py-2.5 text-[13px] leading-6 text-amber-50"
-                  : "max-w-[85%] whitespace-pre-wrap rounded-2xl rounded-bl-md border border-white/10 bg-white/[.06] px-3.5 py-2.5 text-[13px] leading-6 text-stone-200"
+                  ? "ml-auto max-w-[85%] whitespace-pre-wrap rounded-2xl rounded-br-md border border-amber-400/25 bg-amber-500/15 px-3.5 py-2.5 text-body leading-6 text-amber-50"
+                  : "max-w-[85%] whitespace-pre-wrap rounded-2xl rounded-bl-md border border-white/10 bg-white/[.06] px-3.5 py-2.5 text-body leading-6 text-stone-200"
               }
             >
               {m.content}
@@ -241,13 +276,13 @@ export function AiAssistant() {
               rows={1}
               placeholder="输入问题，Enter 发送"
               aria-label="向助手提问"
-              className="max-h-28 min-h-10 flex-1 resize-none rounded-xl border border-white/10 bg-white/[.04] px-3 py-2.5 text-[13px] leading-5 text-stone-200 placeholder:text-fg-faint focus:border-amber-400/40 focus:outline-none"
+              className="max-h-28 min-h-10 flex-1 resize-none rounded-xl border border-white/10 bg-white/[.04] px-3 py-2.5 text-body leading-5 text-stone-200 placeholder:text-fg-faint focus:border-amber-400/40 focus:outline-none"
             />
             <button
               type="button"
               onClick={() => void send()}
               disabled={pending || !input.trim()}
-              className="grid size-10 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-amber-300 to-amber-600 text-stone-900 transition-opacity disabled:opacity-40"
+              className="grid size-10 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-amber-300 to-amber-600 text-stone-900 transition-opacity disabled:opacity-50"
               aria-label="发送"
             >
               <Send className="size-4" aria-hidden="true" />
@@ -262,6 +297,7 @@ export function AiAssistant() {
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
         onPointerCancel={onPointerUp}
+        onKeyDown={onBallKeyDown}
         style={{ left: pos.x, top: pos.y, touchAction: "none" }}
         className={`fixed z-50 grid size-14 cursor-grab select-none place-items-center rounded-full bg-gradient-to-br from-amber-300 to-amber-600 text-stone-900 shadow-lg shadow-amber-500/25 ring-1 ring-amber-200/40 transition-transform hover:scale-105 active:cursor-grabbing ${
           open ? "" : "animate-[assistant-glow_2.4s_ease-in-out_infinite]"

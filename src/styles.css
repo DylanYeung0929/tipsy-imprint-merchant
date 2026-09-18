@@ -78,6 +78,28 @@ h1, h2, h3 {
     @apply rounded p-1.5 text-stone-500 transition-colors hover:bg-white/5 hover:text-stone-200;
   }
 
+  /* 键盘用户跳转链接：聚焦前完全隐藏（sr-only），聚焦后浮在左上角 */
+  .skip-link {
+    @apply sr-only;
+  }
+
+  .skip-link:focus-visible {
+    position: fixed;
+    left: 1rem;
+    top: 1rem;
+    z-index: 60;
+    width: auto;
+    height: auto;
+    margin: 0;
+    overflow: visible;
+    clip: auto;
+    clip-path: none;
+    white-space: nowrap;
+    outline: 2px solid #0d0b0a;
+    outline-offset: 2px;
+    @apply rounded-lg bg-amber-500 px-4 py-2 text-sm font-semibold text-stone-950;
+  }
+
   .input {
     @apply rounded-lg border border-white/15 bg-white/[0.04] px-3 py-2 text-sm text-stone-100 placeholder-stone-600 transition-colors focus:border-amber-400/60;
   }
