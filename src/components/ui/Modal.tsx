@@ -3,11 +3,11 @@ import type { ReactNode, RefObject } from "react";
 import { createPortal } from "react-dom";
 
 const SIZE = {
-  sm: "max-w-sm",
-  md: "max-w-lg",
-  lg: "max-w-xl",
-  "2xl": "max-w-2xl",
-  "3xl": "max-w-3xl",
+  sm: "sm:max-w-sm",
+  md: "sm:max-w-lg",
+  lg: "sm:max-w-xl",
+  "2xl": "sm:max-w-2xl",
+  "3xl": "sm:max-w-3xl",
 } as const;
 
 export type ModalSize = keyof typeof SIZE;
@@ -101,7 +101,7 @@ export function Modal({
 
   return createPortal(
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
+      className="fixed inset-0 z-50 flex items-end justify-center bg-black/70 p-0 sm:items-center sm:p-4"
       onClick={preventClose ? undefined : () => onCloseRef.current()}
     >
       <div
@@ -110,7 +110,7 @@ export function Modal({
         aria-modal="true"
         aria-label={typeof title === "string" ? title : undefined}
         tabIndex={-1}
-        className={`card max-h-[85vh] w-full ${SIZE[size]} overflow-y-auto bg-ink-2 p-6 outline-none ${className}`}
+        className={`card max-h-[calc(100dvh-2rem)] w-full overflow-y-auto rounded-t-panel bg-ink-2 p-6 outline-none max-sm:rounded-b-none sm:max-h-[85vh] sm:rounded-xl ${SIZE[size]} ${className}`}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mb-5 flex items-center justify-between">

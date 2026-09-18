@@ -108,6 +108,18 @@ h1, h2, h3 {
   .table-sticky tbody tr:hover td:first-child {
     background-color: #1f1d1c;
   }
+
+  /* 移动端触控目标 ≥40px */
+  @media (max-width: 1023.98px) {
+    .btn-primary,
+    .btn-ghost,
+    .btn-danger {
+      @apply py-2.5;
+    }
+    .icon-btn {
+      @apply grid size-11 place-items-center;
+    }
+  }
 }
 
 @keyframes assistant-glow {

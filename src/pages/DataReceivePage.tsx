@@ -3,7 +3,7 @@ import { RadioTower, Sparkles, Terminal, Waves } from "lucide-react";
 import type { EspEvent, EspSession, EventType } from "../types";
 import { EVENT_TYPE_LABEL } from "../lib/mock";
 import { fetchEspEvents, fetchEspSessions, fetchSessionAiNote } from "../lib/api";
-import { Alert, Badge, PageHeader, eventTypeMeta, sessionStatusMeta } from "../components/ui";
+import { Alert, Badge, PageHeader, Table, eventTypeMeta, sessionStatusMeta } from "../components/ui";
 
 const EVENT_TYPES: EventType[] = ["pickup", "putdown", "sip", "shake", "chug"];
 
@@ -130,7 +130,7 @@ export function DataReceivePage() {
       />
 
       <section className="grid gap-6 xl:grid-cols-2">
-        <div className="card p-6">
+        <div className="card min-w-0 p-6">
           <div className="flex items-center justify-between">
             <h2 className="flex items-center gap-2 text-lg font-semibold text-stone-100">
               <RadioTower className="size-4 text-amber-400" aria-hidden="true" />
@@ -146,7 +146,7 @@ export function DataReceivePage() {
               <button
                 key={s.id}
                 onClick={() => setSelectedId(s.id)}
-                className={`shrink-0 rounded-lg border px-3 py-1.5 text-xs transition ${
+                className={`shrink-0 rounded-lg border px-3 py-1.5 text-xs transition max-lg:py-2.5 ${
                   s.id === selectedId
                     ? "border-amber-400/50 bg-amber-500/10 text-amber-200"
                     : "border-white/10 bg-white/[0.02] text-stone-400 hover:border-white/20"
@@ -231,8 +231,8 @@ export function DataReceivePage() {
           </div>
         </div>
 
-        <div className="space-y-6">
-          <div className="card p-6">
+        <div className="min-w-0 space-y-6">
+          <div className="card min-w-0 p-6">
             <h2 className="flex items-center gap-2 text-lg font-semibold text-stone-100">
               <Terminal className="size-4 text-amber-400" aria-hidden="true" />
               上报接口（协议 v1）
@@ -243,23 +243,22 @@ export function DataReceivePage() {
             <pre className="mt-3 overflow-x-auto rounded-lg border border-white/10 bg-black/50 p-4 text-xs leading-5 text-emerald-300">
               {`POST /api/v1/devices/{deviceId}/telemetry-batches\n\n${SAMPLE_PAYLOAD}`}
             </pre>
-            <div className="mt-4 overflow-x-auto">
-              <table className="table-base min-w-[420px]">
-                <thead>
-                  <tr>
-                    <th>字段</th>
-                    <th>说明</th>
+            <div className="mt-4">
+              <Table
+                columns={[
+                  { key: "field", label: "字段" },
+                  { key: "desc", label: "说明" },
+                ]}
+                minWidth={420}
+                caption="上报字段说明"
+              >
+                {FIELD_TABLE.map(([k, v]) => (
+                  <tr key={k}>
+                    <td className="whitespace-nowrap text-amber-300">{k}</td>
+                    <td>{v}</td>
                   </tr>
-                </thead>
-                <tbody>
-                  {FIELD_TABLE.map(([k, v]) => (
-                    <tr key={k}>
-                      <td className="whitespace-nowrap text-amber-300">{k}</td>
-                      <td>{v}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+                ))}
+              </Table>
             </div>
           </div>
 

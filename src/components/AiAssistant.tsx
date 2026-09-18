@@ -75,8 +75,16 @@ export function AiAssistant() {
     listRef.current?.scrollTo({ top: listRef.current.scrollHeight, behavior: "smooth" });
   }, [messages, pending, open]);
 
-  // 面板贴靠在悬浮球内侧：左右、上下按球所在半屏选择，位置与缩放原点随球实时更新
+  const isMobile = viewport.w < 768;
+
+  // 面板贴靠在悬浮球内侧：桌面按球所在半屏自适应，移动端底部贴附在球上方
   const panel = useMemo(() => {
+    if (isMobile) {
+      const w = viewport.w - EDGE * 2;
+      const h = Math.min(560, viewport.h - BALL - 48);
+      const top = Math.min(Math.max(EDGE, pos.y - h - 16), viewport.h - h - EDGE);
+      return { w, h, left: EDGE, top, origin: "100% 100%" };
+    }
     const gap = 14;
     const w = Math.min(380, viewport.w - EDGE * 2);
     const h = Math.min(560, viewport.h - 128);
@@ -89,7 +97,13 @@ export function AiAssistant() {
     const ox = Math.min(Math.max(ballCx - left, 0), w);
     const oy = Math.min(Math.max(ballCy - top, 0), h);
     return { w, h, left, top, origin: `${((ox / w) * 100).toFixed(1)}% ${((oy / h) * 100).toFixed(1)}%` };
-  }, [pos, viewport]);
+  }, [pos, viewport, isMobile]);
+
+  // 移动端开面板时保证球在面板下方 16px 之外
+  useEffect(() => {
+    if (!open || !isMobile) return;
+    setPos((p) => (p.y < panel.h + 16 + EDGE ? clampPos(p.x, panel.h + 16 + EDGE) : p));
+  }, [open, isMobile, panel.h]);
 
   const toggle = (next: boolean) => setOpen(next);
 
@@ -108,7 +122,14 @@ export function AiAssistant() {
     const d = dragRef.current;
     if (!d) return;
     if (!d.moved && Math.hypot(e.clientX - d.startX, e.clientY - d.startY) > 5) d.moved = true;
-    if (d.moved) setPos(clampPos(e.clientX - d.offX, e.clientY - d.offY));
+    if (!d.moved) return;
+    // 移动端栏宽受限：仅允许纵向拖动；面板展开时球不能拖进面板区域
+    if (isMobile) {
+      const minY = open ? panel.h + 16 + EDGE : EDGE;
+      setPos(clampPos(posRef.current.x, Math.max(minY, e.clientY - d.offY)));
+    } else {
+      setPos(clampPos(e.clientX - d.offX, e.clientY - d.offY));
+    }
   };
 
   const onPointerUp = () => {
@@ -154,7 +175,7 @@ export function AiAssistant() {
       <div
         data-assistant-panel
         style={{ left: panel.left, top: panel.top, width: panel.w, height: panel.h, transformOrigin: panel.origin }}
-        className={`fixed z-50 flex flex-col overflow-hidden rounded-2xl border border-white/10 bg-[#151210]/95 shadow-2xl shadow-black/60 backdrop-blur-xl transition-[transform,opacity] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] ${
+        className={`fixed z-50 flex flex-col overflow-hidden rounded-2xl border border-white/10 bg-ink-2 shadow-2xl shadow-black/60 transition-[transform,opacity] duration-300 ease-[cubic-bezier(0.22,1,0.36,1)] md:bg-[#151210]/95 md:backdrop-blur-xl ${
           open ? "pointer-events-auto scale-100 opacity-100" : "pointer-events-none scale-90 opacity-0"
         }`}
         aria-hidden={!open}
@@ -170,7 +191,7 @@ export function AiAssistant() {
           <button
             type="button"
             onClick={() => toggle(false)}
-            className="ml-auto rounded-lg p-1.5 text-stone-500 transition-colors hover:bg-white/5 hover:text-stone-200"
+            className="ml-auto rounded-lg p-1.5 text-stone-500 transition-colors hover:bg-white/5 hover:text-stone-200 max-md:p-3"
             aria-label="关闭助手"
           >
             <X className="size-4" aria-hidden="true" />

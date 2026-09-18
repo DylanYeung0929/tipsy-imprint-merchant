@@ -21,6 +21,7 @@ import {
   SimpleBarChart,
   Skeleton,
   StatCard,
+  Table,
 } from "../components/ui";
 
 /** 真实遥测 → AI 分析负载：按 drinkId/name 匹配酒单取 designIntent，匹配不到则合成占位酒款 */
@@ -190,59 +191,53 @@ export function DashboardPage() {
       </section>
 
       <section className="mt-8 grid items-start gap-6 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)]">
-        <div className="card p-6">
+        <div className="card min-w-0 p-6">
           <h2 className="text-lg font-semibold text-stone-100">酒款行为对比</h2>
-          <div className="mt-4 overflow-x-auto">
-            <table className="table-base min-w-[640px]">
-              <thead>
+          <div className="mt-4">
+            <Table
+              columns={[
+                { key: "drink", label: "酒款" },
+                { key: "pickup", label: "平均拿起" },
+                { key: "sip", label: "平均单次饮量" },
+                { key: "shake", label: "摇晃度" },
+                { key: "chug", label: "一饮而尽率" },
+                { key: "duration", label: "平均停留" },
+              ]}
+              minWidth={640}
+              caption="酒款行为对比"
+              loading={pageLoading}
+              isEmpty={rows.length === 0}
+              emptyRow={
                 <tr>
-                  <th>酒款</th>
-                  <th>平均拿起</th>
-                  <th>平均单次饮量</th>
-                  <th>摇晃度</th>
-                  <th>一饮而尽率</th>
-                  <th>平均停留</th>
+                  <td colSpan={6} className="border-0">
+                    <EmptyState
+                      icon={BarChart3}
+                      title="暂无行为数据"
+                      description="完成第一场智能酒杯会话后，这里会展示各酒款的行为对比。"
+                      action={
+                        <Link className="btn-ghost" to="/menu">
+                          去配置酒单
+                        </Link>
+                      }
+                    />
+                  </td>
                 </tr>
-              </thead>
-              <tbody>
-                {pageLoading ? (
-                  <tr>
-                    <td colSpan={6} className="border-0 py-4">
-                      <Skeleton className="h-5 w-full" />
-                    </td>
-                  </tr>
-                ) : rows.length === 0 ? (
-                  <tr>
-                    <td colSpan={6} className="border-0">
-                      <EmptyState
-                        icon={BarChart3}
-                        title="暂无行为数据"
-                        description="完成第一场智能酒杯会话后，这里会展示各酒款的行为对比。"
-                        action={
-                          <Link className="btn-ghost" to="/menu">
-                            去配置酒单
-                          </Link>
-                        }
-                      />
-                    </td>
-                  </tr>
-                ) : (
-                  rows.map(({ key, name, s }) => (
-                    <tr key={key}>
-                      <td className="text-stone-100">
-                        <span className="mr-3 inline-block size-2 rounded-full bg-amber-400" />
-                        {name}
-                      </td>
-                      <td className="tabular-nums">{s.avgPickupCount} 次</td>
-                      <td className="tabular-nums">{s.avgSipVolume} ml</td>
-                      <td className="tabular-nums">{Math.round(s.avgShake * 100)}%</td>
-                      <td className="tabular-nums">{Math.round(s.chugRate * 100)}%</td>
-                      <td className="tabular-nums">{s.avgDurationMin} min</td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
+              }
+            >
+              {rows.map(({ key, name, s }) => (
+                <tr key={key}>
+                  <td className="text-stone-100">
+                    <span className="mr-3 inline-block size-2 rounded-full bg-amber-400" />
+                    {name}
+                  </td>
+                  <td className="tabular-nums">{s.avgPickupCount} 次</td>
+                  <td className="tabular-nums">{s.avgSipVolume} ml</td>
+                  <td className="tabular-nums">{Math.round(s.avgShake * 100)}%</td>
+                  <td className="tabular-nums">{Math.round(s.chugRate * 100)}%</td>
+                  <td className="tabular-nums">{s.avgDurationMin} min</td>
+                </tr>
+              ))}
+            </Table>
           </div>
           <h3 className="mt-8 text-sm text-stone-500">各酒款平均拿起次数</h3>
           <div className="mt-4">
@@ -254,7 +249,7 @@ export function DashboardPage() {
           </div>
         </div>
 
-        <div className="card flex flex-col p-6">
+        <div className="card flex min-w-0 flex-col p-6">
           <div className="flex items-center justify-between">
             <h2 className="text-lg font-semibold text-stone-100">AI 经营分析</h2>
             <button className="btn-primary" onClick={runAnalysis} disabled={loading}>

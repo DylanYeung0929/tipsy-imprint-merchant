@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
-import { NavLink, Navigate, Route, Routes } from "react-router-dom";
+import { NavLink, Navigate, Route, Routes, useLocation } from "react-router-dom";
 import {
   Activity,
   BarChart3,
   ExternalLink,
   LogOut,
+  Menu,
   RadioTower,
   Database,
   Stamp,
@@ -40,9 +41,11 @@ const nav = [
 function Sidebar({
   username,
   onLogout,
+  open,
 }: {
   username: string;
   onLogout: () => void;
+  open: boolean;
 }) {
   const [deviceOnline, setDeviceOnline] = useState(false);
 
@@ -67,7 +70,11 @@ function Sidebar({
   }, []);
 
   return (
-    <aside className="fixed inset-y-0 left-0 z-20 flex w-56 flex-col border-r border-white/10 bg-[#100e0c]">
+    <aside
+      className={`fixed inset-y-0 left-0 z-40 flex w-56 flex-col border-r border-white/10 bg-ink-1 transition-[transform,visibility] duration-300 lg:visible lg:z-20 lg:translate-x-0 ${
+        open ? "visible translate-x-0" : "invisible -translate-x-full"
+      }`}
+    >
       <div className="border-b border-white/10 px-6 py-6">
         <p className="display-en text-xs text-amber-400">TIPSY IMPRINT</p>
         <h1 className="mt-1 text-lg font-semibold text-stone-100">商家数据台</h1>
@@ -123,7 +130,7 @@ function Sidebar({
           <p className="text-xs text-fg-faint">商家账号</p>
         </div>
         <button
-          className="rounded p-1.5 text-stone-500 transition-colors hover:bg-white/5 hover:text-red-400"
+          className="rounded p-1.5 text-stone-500 transition-colors hover:bg-white/5 hover:text-red-400 max-lg:p-3"
           onClick={onLogout}
           aria-label="退出登录"
           title="退出登录"
@@ -138,6 +145,20 @@ function Sidebar({
 export default function App() {
   const [authState, setAuthState] = useState<"loading" | "out" | "in">("loading");
   const [username, setUsername] = useState("");
+  const [navOpen, setNavOpen] = useState(false);
+  const location = useLocation();
+
+  // 移动端抽屉：路由变化与 Esc 自动关闭
+  useEffect(() => setNavOpen(false), [location.pathname]);
+
+  useEffect(() => {
+    if (!navOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setNavOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [navOpen]);
 
   useEffect(() => {
     void (async () => {
@@ -182,8 +203,28 @@ export default function App() {
 
   return (
     <div className="min-h-dvh">
-      <Sidebar username={username} onLogout={handleLogout} />
-      <main className="ml-56 min-h-dvh px-8 py-8">
+      <header className="sticky top-0 z-30 flex h-14 items-center gap-3 border-b border-hairline bg-ink px-4 lg:hidden">
+        <button
+          type="button"
+          onClick={() => setNavOpen(true)}
+          aria-label="打开导航"
+          aria-expanded={navOpen}
+          className="grid size-11 place-items-center rounded-lg text-stone-300 transition-colors hover:bg-white/5 hover:text-white"
+        >
+          <Menu className="size-5" aria-hidden="true" />
+        </button>
+        <span className="text-sm font-semibold text-stone-100">商家数据台</span>
+        <span className="display-en text-2xs text-amber-400">TIPSY IMPRINT</span>
+      </header>
+      {navOpen && (
+        <div
+          className="fixed inset-0 z-30 bg-black/60 lg:hidden"
+          onClick={() => setNavOpen(false)}
+          aria-hidden="true"
+        />
+      )}
+      <Sidebar username={username} onLogout={handleLogout} open={navOpen} />
+      <main className="min-h-dvh px-4 py-5 lg:ml-56 lg:px-8 lg:py-8">
         <Routes>
           <Route path="/" element={<Navigate to="/dashboard" replace />} />
           <Route path="/dashboard" element={<DashboardPage />} />

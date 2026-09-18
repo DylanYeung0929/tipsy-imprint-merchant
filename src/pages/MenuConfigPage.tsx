@@ -10,7 +10,7 @@ import {
   EmptyState,
   Modal,
   PageHeader,
-  Skeleton,
+  Table,
   saleStatusMeta,
 } from "../components/ui";
 
@@ -268,86 +268,79 @@ export function MenuConfigPage() {
           </div>
         </div>
 
-        <div className="overflow-x-auto">
-          <table className="table-base min-w-[880px]">
-            <thead>
-              <tr>
-                <th>酒款</th>
-                <th>品类</th>
-                <th>酒精度</th>
-                <th>价格</th>
-                <th>风味</th>
-                <th>设计初衷</th>
-                <th>状态</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {loading && drinks.length === 0 && (
-                <tr>
-                  <td colSpan={8} className="border-0 py-4">
-                    <Skeleton className="h-5 w-full" />
-                  </td>
-                </tr>
-              )}
-              {!loading && drinks.length === 0 && (
-                <tr>
-                  <td colSpan={8} className="border-0">
-                    <EmptyState
-                      icon={Wine}
-                      title="暂无酒款"
-                      description="手动新增酒款，或拍照让 AI 识别酒单后一键导入。"
-                      action={
-                        <button className="btn-primary" onClick={openCreate}>
-                          <Plus className="size-4" aria-hidden="true" />
-                          新增酒款
-                        </button>
-                      }
-                    />
-                  </td>
-                </tr>
-              )}
-              {drinks.map((d) => (
-                <tr key={d.id}>
-                  <td className="text-stone-100">{d.name}</td>
-                  <td>{d.category}</td>
-                  <td className="tabular-nums">{d.abv}%</td>
-                  <td className="tabular-nums">¥{d.price}</td>
-                  <td className="max-w-44 text-stone-400">{d.flavor}</td>
-                  <td className="max-w-64 text-stone-400">{d.designIntent}</td>
-                  <td>
-                    {d.active ? (
-                      <Badge tone={saleStatusMeta.on.tone}>{saleStatusMeta.on.label}</Badge>
-                    ) : (
-                      <Badge tone={saleStatusMeta.off.tone}>{saleStatusMeta.off.label}</Badge>
-                    )}
-                  </td>
-                  <td>
-                    <div className="flex items-center justify-end gap-1">
-                      <button
-                        className="rounded p-1.5 text-stone-500 hover:bg-white/5 hover:text-amber-300"
-                        onClick={() => openEdit(d)}
-                        aria-label={`编辑 ${d.name}`}
-                      >
-                        <Pencil className="size-4" aria-hidden="true" />
-                      </button>
-                      <button
-                        className="rounded p-1.5 text-stone-500 hover:bg-red-500/10 hover:text-red-400"
-                        onClick={() => {
-                          setDeleteError("");
-                          setPendingDelete(d);
-                        }}
-                        aria-label={`删除 ${d.name}`}
-                      >
-                        <Trash2 className="size-4" aria-hidden="true" />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <Table
+          columns={[
+            { key: "name", label: "酒款" },
+            { key: "category", label: "品类" },
+            { key: "abv", label: "酒精度" },
+            { key: "price", label: "价格" },
+            { key: "flavor", label: "风味" },
+            { key: "intent", label: "设计初衷" },
+            { key: "status", label: "状态" },
+            { key: "actions", label: "" },
+          ]}
+          minWidth={880}
+          stickyFirstCol
+          caption="酒款列表"
+          loading={loading && drinks.length === 0}
+          isEmpty={!loading && drinks.length === 0}
+          emptyRow={
+            <tr>
+              <td colSpan={8} className="border-0">
+                <EmptyState
+                  icon={Wine}
+                  title="暂无酒款"
+                  description="手动新增酒款，或拍照让 AI 识别酒单后一键导入。"
+                  action={
+                    <button className="btn-primary" onClick={openCreate}>
+                      <Plus className="size-4" aria-hidden="true" />
+                      新增酒款
+                    </button>
+                  }
+                />
+              </td>
+            </tr>
+          }
+        >
+          {drinks.map((d) => (
+            <tr key={d.id}>
+              <td className="text-stone-100">{d.name}</td>
+              <td>{d.category}</td>
+              <td className="tabular-nums">{d.abv}%</td>
+              <td className="tabular-nums">¥{d.price}</td>
+              <td className="max-w-44 text-stone-400">{d.flavor}</td>
+              <td className="max-w-64 text-stone-400">{d.designIntent}</td>
+              <td>
+                {d.active ? (
+                  <Badge tone={saleStatusMeta.on.tone}>{saleStatusMeta.on.label}</Badge>
+                ) : (
+                  <Badge tone={saleStatusMeta.off.tone}>{saleStatusMeta.off.label}</Badge>
+                )}
+              </td>
+              <td>
+                <div className="flex items-center justify-end gap-1">
+                  <button
+                    className="rounded p-1.5 text-stone-500 hover:bg-white/5 hover:text-amber-300 max-lg:p-3"
+                    onClick={() => openEdit(d)}
+                    aria-label={`编辑 ${d.name}`}
+                  >
+                    <Pencil className="size-4" aria-hidden="true" />
+                  </button>
+                  <button
+                    className="rounded p-1.5 text-stone-500 hover:bg-red-500/10 hover:text-red-400 max-lg:p-3"
+                    onClick={() => {
+                      setDeleteError("");
+                      setPendingDelete(d);
+                    }}
+                    aria-label={`删除 ${d.name}`}
+                  >
+                    <Trash2 className="size-4" aria-hidden="true" />
+                  </button>
+                </div>
+              </td>
+            </tr>
+          ))}
+        </Table>
       </div>
 
       {modalOpen && (

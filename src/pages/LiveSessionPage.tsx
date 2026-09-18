@@ -76,11 +76,11 @@ function LineChart({
       </div>
       <div className="mt-3">
         {empty ? (
-          <div className="flex h-[130px] items-center justify-center rounded-lg border border-white/10 bg-black/30 text-xs text-fg-muted">
+          <div className="flex h-[110px] items-center justify-center rounded-lg border border-white/10 bg-black/30 text-xs text-fg-muted sm:h-[130px]">
             等待数据…
           </div>
         ) : (
-          <svg viewBox={`0 0 ${W} ${H}`} className="h-[130px] w-full" preserveAspectRatio="none" aria-label={title}>
+          <svg viewBox={`0 0 ${W} ${H}`} className="h-[110px] w-full sm:h-[130px]" preserveAspectRatio="none" aria-label={title}>
             {[0.25, 0.5, 0.75].map((f) => (
               <line
                 key={f}
@@ -234,7 +234,7 @@ export function LiveSessionPage() {
       {error && <Alert className="mb-4">{error}</Alert>}
 
       <section className="grid gap-6 xl:grid-cols-[320px_1fr]">
-        <div className="card p-4">
+        <div className="card min-w-0 p-4">
           <div className="flex items-center justify-between px-2 pt-1">
             <h2 className="flex items-center gap-2 text-sm font-semibold text-stone-200">
               <RadioTower className="size-4 text-amber-400" aria-hidden="true" />
@@ -242,11 +242,11 @@ export function LiveSessionPage() {
             </h2>
             <span className="text-2xs text-fg-faint">3s 刷新</span>
           </div>
-          <ul className="mt-3 space-y-2">
+          <ul className="mt-3 flex gap-3 overflow-x-auto pb-1 xl:block xl:space-y-2 xl:overflow-visible xl:pb-0">
             {sessions.map((s) => {
               const m = statusOf(s);
               return (
-                <li key={s.id}>
+                <li key={s.id} className="max-xl:w-64 max-xl:shrink-0">
                   <button
                     type="button"
                     onClick={() => setSelectedId(s.id)}
@@ -269,22 +269,22 @@ export function LiveSessionPage() {
                 </li>
               );
             })}
-            {loading && <li className="px-2 py-10 text-center text-sm text-fg-muted">加载中…</li>}
+            {loading && <li className="w-full px-2 py-10 text-center text-sm text-fg-muted">加载中…</li>}
             {!loading && !sessions.length && (
-              <li>
+              <li className="w-full">
                 <EmptyState icon={Activity} size="sm" title="暂无体验会话" description="用户在设备上开始体验后会自动出现在这里。" />
               </li>
             )}
           </ul>
         </div>
 
-        <div className="space-y-6">
+        <div className="min-w-0 space-y-6">
           {!session && (
             <div className="card flex h-64 items-center justify-center">
               <EmptyState
                 icon={Activity}
                 size="sm"
-                title="选择左侧会话查看实时数据"
+                title="选择一个会话查看实时数据"
                 description="进行中的会话每秒增量刷新 FSR 与 IMU 曲线。"
               />
             </div>

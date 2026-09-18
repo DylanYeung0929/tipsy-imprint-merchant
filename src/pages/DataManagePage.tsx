@@ -3,7 +3,7 @@ import { Search, SearchX } from "lucide-react";
 import { fetchDrinks, fetchEvents, fetchSessions, fetchUsers } from "../lib/api";
 import { EVENT_TYPE_LABEL } from "../lib/mock";
 import { useLoad } from "../lib/useLoad";
-import { Alert, EmptyState, Input, PageHeader, Skeleton } from "../components/ui";
+import { Alert, EmptyState, Input, PageHeader, Table } from "../components/ui";
 
 export function DataManagePage() {
   const { data, loading, error, reload } = useLoad(async () => {
@@ -63,7 +63,7 @@ export function DataManagePage() {
         <div className="flex flex-wrap items-center gap-3">
           <Input
             icon={Search}
-            className="w-64"
+            className="w-full sm:w-64"
             placeholder="搜索会话 / 酒款 / 用户"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
@@ -96,68 +96,61 @@ export function DataManagePage() {
       )}
 
       <div className="card mt-6 p-6">
-        <div className="overflow-x-auto">
-          <table className="table-base min-w-[720px]">
-            <thead>
-              <tr>
-                <th>会话 ID</th>
-                <th>用户</th>
-                <th>酒款</th>
-                <th>开始时间</th>
-                <th>拿起次数</th>
-                <th>总饮量</th>
-                <th>摇晃峰值</th>
-                <th>一饮而尽</th>
-                <th className="sr-only">操作</th>
-              </tr>
-            </thead>
-            <tbody>
-              {loading ? (
-                <tr>
-                  <td colSpan={9} className="border-0 py-4">
-                    <Skeleton className="h-5 w-full" />
-                  </td>
-                </tr>
-              ) : filtered.length === 0 ? (
-                <tr>
-                  <td colSpan={9} className="border-0">
-                    <EmptyState
-                      icon={SearchX}
-                      title="没有符合条件的会话"
-                      description="调整筛选条件，或清除筛选查看全部会话。"
-                      action={
-                        <button className="btn-ghost" onClick={clearFilters}>
-                          清除筛选
-                        </button>
-                      }
-                    />
-                  </td>
-                </tr>
-              ) : (
-                filtered.map((s) => (
-                  <tr key={s.id}>
-                    <td className="tabular-nums text-stone-500">{s.id}</td>
-                    <td className="text-stone-100">{userName(s.userId)}</td>
-                    <td>{drinkName(s.drinkId)}</td>
-                    <td className="tabular-nums text-stone-500">{s.startedAt}</td>
-                    <td className="tabular-nums">{s.pickupCount} 次</td>
-                    <td className="tabular-nums">{s.sipVolumeTotal} ml</td>
-                    <td className="tabular-nums">{Math.round(s.shakeMax * 100)}%</td>
-                    <td>{s.chugged ? <span className="text-emerald-400">是</span> : <span className="text-fg-faint">否</span>}</td>
-                    <td>
-                      <button
-                        className="text-xs text-amber-400 hover:text-amber-300"
-                        onClick={() => setDetailId(detailId === s.id ? null : s.id)}
-                      >
-                        {detailId === s.id ? "收起事件" : "查看事件"}
-                      </button>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
+        <Table
+          columns={[
+            { key: "id", label: "会话 ID" },
+            { key: "user", label: "用户" },
+            { key: "drink", label: "酒款" },
+            { key: "startedAt", label: "开始时间" },
+            { key: "pickup", label: "拿起次数" },
+            { key: "volume", label: "总饮量" },
+            { key: "shake", label: "摇晃峰值" },
+            { key: "chugged", label: "一饮而尽" },
+            { key: "actions", label: "操作", className: "sr-only" },
+          ]}
+          minWidth={720}
+          stickyFirstCol
+          caption="会话列表"
+          loading={loading}
+          isEmpty={filtered.length === 0}
+          emptyRow={
+            <tr>
+              <td colSpan={9} className="border-0">
+                <EmptyState
+                  icon={SearchX}
+                  title="没有符合条件的会话"
+                  description="调整筛选条件，或清除筛选查看全部会话。"
+                  action={
+                    <button className="btn-ghost" onClick={clearFilters}>
+                      清除筛选
+                    </button>
+                  }
+                />
+              </td>
+            </tr>
+          }
+        >
+          {filtered.map((s) => (
+            <tr key={s.id}>
+              <td className="tabular-nums text-stone-500">{s.id}</td>
+              <td className="text-stone-100">{userName(s.userId)}</td>
+              <td>{drinkName(s.drinkId)}</td>
+              <td className="tabular-nums text-stone-500">{s.startedAt}</td>
+              <td className="tabular-nums">{s.pickupCount} 次</td>
+              <td className="tabular-nums">{s.sipVolumeTotal} ml</td>
+              <td className="tabular-nums">{Math.round(s.shakeMax * 100)}%</td>
+              <td>{s.chugged ? <span className="text-emerald-400">是</span> : <span className="text-fg-faint">否</span>}</td>
+              <td>
+                <button
+                  className="text-xs text-amber-400 hover:text-amber-300 max-lg:py-3"
+                  onClick={() => setDetailId(detailId === s.id ? null : s.id)}
+                >
+                  {detailId === s.id ? "收起事件" : "查看事件"}
+                </button>
+              </td>
+            </tr>
+          ))}
+        </Table>
 
         {detailId && sessionEvents(detailId).length > 0 && (
           <div className="mt-6 rounded-lg border border-white/10 bg-black/30 p-5">
