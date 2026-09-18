@@ -1,7 +1,15 @@
 import { useRef, useState } from "react";
-import { Camera, Loader2, Pencil, Plus, Trash2, Wine } from "lucide-react";
+import { Camera, ImagePlus, Loader2, Pencil, Plus, Sparkles, Trash2, Wine } from "lucide-react";
 import type { Drink, MenuImportItem } from "../types";
-import { createDrink, deleteDrink, fetchDrinks, importMenu, updateDrink } from "../lib/api";
+import {
+  createDrink,
+  deleteDrink,
+  fetchDrinks,
+  generateDrinkImage,
+  importMenu,
+  storeDrinkImage,
+  updateDrink,
+} from "../lib/api";
 import { useLoad } from "../lib/useLoad";
 import {
   Alert,
@@ -16,30 +24,13 @@ import {
 } from "../components/ui";
 
 /** 压缩图片到最长边 maxDim 的 JPEG data URL，避免超过接口 4MB 限制 */
-function compressImage(file: File, maxDim = 1600): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const img = new Image();
-    const url = URL.createObjectURL(file);
-    img.onload = () => {
-      const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
-      const canvas = document.createElement("canvas");
-      canvas.width = Math.round(img.width * scale);
-      canvas.height = Math.round(img.height * scale);
-      const ctx = canvas.getContext("2d");
-      URL.revokeObjectURL(url);
-      if (!ctx) {
-        reject(new Error("浏览器不支持图片处理"));
-        return;
-      }
-      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-      resolve(canvas.toDataURL("image/jpeg", 0.85));
-    };
-    img.onerror = () => {
-      URL.revokeObjectURL(url);
-      reject(new Error("图片加载失败"));
-    };
-    img.src = url;
-  });
+async function compressImage(file: File, maxDim = 1600): Promise<string> {
+  const url = URL.createObjectURL(file);
+  try {
+    return await shrinkImage(url, maxDim, 0.85);
+  } finally {
+    URL.revokeObjectURL(url);
+  }
 }
 
 interface FormState {
@@ -49,6 +40,10 @@ interface FormState {
   price: string;
   flavor: string;
   designIntent: string;
+  glass: string;
+  ingredients: string;
+  /** AI 生成的配图短链（保存时随酒款入库） */
+  image: string;
   active: boolean;
 }
 
@@ -59,8 +54,46 @@ const emptyForm: FormState = {
   price: "",
   flavor: "",
   designIntent: "",
+  glass: "",
+  ingredients: "",
+  image: "",
   active: true,
 };
+
+/** 常见杯型（datalist 建议项，允许自由填写） */
+const GLASS_OPTIONS = [
+  "古典杯",
+  "高球杯 / 柯林杯",
+  "马天尼杯",
+  "玛格丽特杯",
+  "飓风杯",
+  "香槟杯",
+  "铜杯",
+  "子弹杯",
+  "红酒杯",
+];
+
+/** 把任意图片（File 或 data URL）压到最长边 maxDim 的 JPEG data URL */
+function shrinkImage(src: string, maxDim: number, quality: number): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.max(1, Math.round(img.width * scale));
+      canvas.height = Math.max(1, Math.round(img.height * scale));
+      const ctx = canvas.getContext("2d");
+      if (!ctx) {
+        reject(new Error("浏览器不支持图片处理"));
+        return;
+      }
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      resolve(canvas.toDataURL("image/jpeg", quality));
+    };
+    img.onerror = () => reject(new Error("图片加载失败"));
+    img.src = src;
+  });
+}
 
 export function MenuConfigPage() {
   const { data, loading, error: loadError, reload } = useLoad(fetchDrinks);
@@ -73,9 +106,15 @@ export function MenuConfigPage() {
   const [pendingDelete, setPendingDelete] = useState<Drink | null>(null);
   const [deleteBusy, setDeleteBusy] = useState(false);
   const [deleteError, setDeleteError] = useState("");
+  const [imageBusy, setImageBusy] = useState(false);
+  const [imageError, setImageError] = useState("");
+  /** 本次生成实际使用的风格提示词（展示用） */
+  const [imagePrompt, setImagePrompt] = useState("");
 
   const openCreate = () => {
     setForm(emptyForm);
+    setImagePrompt("");
+    setImageError("");
     setCreating(true);
   };
 
@@ -87,8 +126,13 @@ export function MenuConfigPage() {
       price: String(d.price),
       flavor: d.flavor,
       designIntent: d.designIntent,
+      glass: d.glass ?? "",
+      ingredients: d.ingredients ?? "",
+      image: d.image ?? "",
       active: d.active,
     });
+    setImagePrompt("");
+    setImageError("");
     setEditing(d);
   };
 
@@ -96,6 +140,8 @@ export function MenuConfigPage() {
     setCreating(false);
     setEditing(null);
     setError("");
+    setImageError("");
+    setImagePrompt("");
   };
 
   const submit = async () => {
@@ -113,6 +159,9 @@ export function MenuConfigPage() {
         price: Number(form.price) || 0,
         flavor: form.flavor.trim() || "未知",
         designIntent: form.designIntent.trim(),
+        glass: form.glass.trim(),
+        ingredients: form.ingredients.trim(),
+        image: form.image,
         active: form.active,
       };
       if (editing) {
@@ -126,6 +175,33 @@ export function MenuConfigPage() {
       setError(e instanceof Error ? e.message : "保存失败");
     } finally {
       setBusy(false);
+    }
+  };
+
+  /** 按固定风格生成配图：AI 出图 → 压到 512px JPEG → 存 KV 换短链（避免快照膨胀） */
+  const generateImage = async () => {
+    if (imageBusy) return;
+    if (!form.glass.trim() && !form.ingredients.trim()) {
+      setImageError("请先填写杯子类型或详细配料，AI 将据此生成配图");
+      return;
+    }
+    setImageBusy(true);
+    setImageError("");
+    try {
+      const { image, prompt } = await generateDrinkImage({
+        name: form.name.trim(),
+        glass: form.glass.trim(),
+        ingredients: form.ingredients.trim(),
+        flavor: form.flavor.trim(),
+      });
+      const compact = await shrinkImage(image, 512, 0.82);
+      const url = await storeDrinkImage(compact);
+      setForm((f) => ({ ...f, image: url }));
+      setImagePrompt(prompt);
+    } catch (e) {
+      setImageError(e instanceof Error ? e.message : "生成失败，请重试");
+    } finally {
+      setImageBusy(false);
     }
   };
 
@@ -306,7 +382,18 @@ export function MenuConfigPage() {
         >
           {drinks.map((d) => (
             <tr key={d.id}>
-              <td className="text-stone-100">{d.name}</td>
+              <td className="text-stone-100">
+                <span className="flex items-center gap-2.5">
+                  {d.image && (
+                    <img
+                      src={d.image}
+                      alt=""
+                      className="size-9 shrink-0 rounded-md border border-white/10 bg-white object-cover"
+                    />
+                  )}
+                  {d.name}
+                </span>
+              </td>
               <td>{d.category}</td>
               <td className="tabular-nums">{d.abv}%</td>
               <td className="tabular-nums">¥{d.price}</td>
@@ -376,6 +463,97 @@ export function MenuConfigPage() {
                 placeholder="如：威士忌醇厚，橙皮与苦精的草本甜香"
               />
             </label>
+
+            <div className="grid grid-cols-2 gap-3">
+              <label className="block">
+                <span className="mb-1 block text-xs text-stone-500">杯子类型</span>
+                <input
+                  className="input w-full"
+                  list="glass-options"
+                  value={form.glass}
+                  onChange={(e) => set("glass", e.target.value)}
+                  placeholder="如：古典杯"
+                  aria-label="杯子类型"
+                />
+                <datalist id="glass-options">
+                  {GLASS_OPTIONS.map((g) => (
+                    <option key={g} value={g} />
+                  ))}
+                </datalist>
+              </label>
+              <label className="block">
+                <span className="mb-1 block text-xs text-stone-500">详细配料</span>
+                <input
+                  className="input w-full"
+                  value={form.ingredients}
+                  onChange={(e) => set("ingredients", e.target.value)}
+                  placeholder="如：波本 45ml、苦精 3 滴、橙皮卷"
+                  aria-label="详细配料"
+                />
+              </label>
+            </div>
+
+            <div className="rounded-xl border border-white/10 bg-white/[0.02] p-3">
+              <div className="flex items-start gap-3">
+                {form.image ? (
+                  <img
+                    src={form.image}
+                    alt="酒款配图"
+                    className="size-24 shrink-0 rounded-lg border border-white/10 bg-white object-cover"
+                  />
+                ) : (
+                  <div className="flex size-24 shrink-0 items-center justify-center rounded-lg border border-dashed border-white/15 text-fg-faint">
+                    <ImagePlus className="size-6" aria-hidden="true" />
+                  </div>
+                )}
+                <div className="min-w-0 flex-1 space-y-2">
+                  <p className="text-xs text-stone-400">
+                    AI 按固定风格出图：纯白背景 + 影棚背光 + 单杯中心构图，与内置 12 款酒图统一
+                  </p>
+                  <div className="flex flex-wrap items-center gap-3">
+                    <button
+                      type="button"
+                      className="btn-ghost"
+                      onClick={() => void generateImage()}
+                      disabled={imageBusy}
+                    >
+                      {imageBusy ? (
+                        <>
+                          <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+                          生成中（约 10 秒）…
+                        </>
+                      ) : (
+                        <>
+                          <Sparkles className="size-4" aria-hidden="true" />
+                          {form.image ? "重新生成" : "AI 生成配图"}
+                        </>
+                      )}
+                    </button>
+                    {form.image && !imageBusy && (
+                      <button
+                        type="button"
+                        className="text-xs text-stone-500 hover:text-stone-300"
+                        onClick={() => {
+                          setForm((f) => ({ ...f, image: "" }));
+                          setImagePrompt("");
+                        }}
+                      >
+                        移除配图
+                      </button>
+                    )}
+                  </div>
+                  {imageError && <Alert>{imageError}</Alert>}
+                  {imagePrompt && (
+                    <details className="text-caption text-fg-faint">
+                      <summary className="cursor-pointer hover:text-stone-400">
+                        查看本次风格提示词
+                      </summary>
+                      <p className="mt-1 break-words leading-relaxed">{imagePrompt}</p>
+                    </details>
+                  )}
+                </div>
+              </div>
+            </div>
 
             <label className="block">
               <span className="mb-1 block text-xs text-stone-500">

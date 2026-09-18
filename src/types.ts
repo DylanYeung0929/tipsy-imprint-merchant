@@ -17,6 +17,12 @@ export interface Drink {
   flavor: string;
   /** 设计初衷：供 AI 做行为匹配分析 */
   designIntent: string;
+  /** 杯子类型（AI 生成配图用） */
+  glass?: string;
+  /** 详细配料（AI 生成配图用） */
+  ingredients?: string;
+  /** AI 生成的酒款配图短链（/api/drink-image/xxx，图片本体存 KV） */
+  image?: string;
   /** 卡片视觉方案（AI 生成，可缺省回退默认配色） */
   cardStyle?: CardStyle;
   active: boolean;

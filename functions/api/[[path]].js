@@ -1,6 +1,6 @@
 /**
  * 微醺印记 · 商家端云端 API（Pages Functions）
- * 路由：/api/health /api/auth/* /api/data /api/analyze /api/v1/*（ESP 协议 v1）
+ * 路由：/api/health /api/auth/* /api/data /api/analyze /api/drink-image/* /api/v1/*（ESP 协议 v1）
  * 存储：KV（TIPSY_KV）+ D1（TIPSY_DB，遥测 sessions/packets）；密码：PBKDF2-SHA256 5万次 + HMAC pepper（PASSWORD_PEPPER 密钥）
  * 模型凭据：ANTHROPIC_AUTH_TOKEN / ANTHROPIC_BASE_URL / ANTHROPIC_MODEL（Pages 密钥）；设备共享密钥：DEVICE_KEY
  */
@@ -13,14 +13,19 @@ const TOKEN_TTL_SECONDS = 7 * 24 * 3600;
 const ANALYZE_MIN_INTERVAL_MS = 20_000;
 const VISION_MODEL = "@cf/meta/llama-4-scout-17b-16e-instruct";
 const TEXT_MODEL = "@cf/meta/llama-4-scout-17b-16e-instruct";
+const IMAGE_MODEL = "@cf/black-forest-labs/flux-1-schnell";
 const IMPRINT_LINE_MIN_INTERVAL_MS = 1_200;
 const MENU_IMPORT_MIN_INTERVAL_MS = 10_000;
 const CHAT_MIN_INTERVAL_MS = 1_500;
 const AI_NOTE_MIN_INTERVAL_MS = 3_000;
+const DRINK_IMAGE_MIN_INTERVAL_MS = 8_000;
+const DRINK_IMAGE_KEY_PREFIX = "drinkimg:";
+const DRINK_IMAGE_MAX_BYTES = 400 * 1024;
 let lastImprintLineAt = 0;
 let lastMenuImportAt = 0;
 let lastChatAt = 0;
 let lastAiNoteAt = 0;
+let lastDrinkImageAt = 0;
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -184,6 +189,28 @@ const STYLE_PROMPT = [
   "酒款列表（JSON）：",
 ].join("\n");
 
+/**
+ * 酒款配图固定风格：对齐 src/assets/cocktails 现有 12 张素材的共同特征
+ * —— 纯白无缝背景 + 影棚背光透亮 + 单杯中心构图 + 1:1 无文字/人物/道具。
+ */
+const DRINK_IMAGE_STYLE_PROMPT = [
+  "professional beverage advertising photograph on a seamless pure white background",
+  "a single glass centered and filling most of the frame",
+  "bright even studio lighting, neutral white backdrop with no color cast, warm backlight glowing through the drink",
+  "sharp glass highlights, delicate condensation, subtle reflection beneath the glass",
+  "clean tidy composition on a bare surface, absolutely no spilled liquid, no splash, no puddle",
+  "ultra sharp focus, high detail, luxurious and appetizing, square 1:1",
+  "no text, no letters, no logo, no watermark, no hands, no people, no extra props",
+].join(", ");
+
+const DRINK_IMAGE_DESC_PROMPT = [
+  "你是酒类商业摄影的场景设计师。把下面商家填写的酒款信息改写成一句英文视觉描述（40 词以内）。",
+  "只描述杯中的酒：色泽与透明度、液体与冰块的形态、杯型的材质与形状、装饰物（garnish）及其摆放位置。",
+  "禁止添加任何杯外元素：不要溢出、飞溅、酒液洒落、桌面道具、第二个杯子、背景装饰物。",
+  "只输出这一句英文描述本身，不要引号、不要分点、不要任何解释或中文。",
+  "酒款信息：",
+].join("\n");
+
 function resolveArray(value, raw = "") {
   if (Array.isArray(value)) return value;
   if (typeof value === "string" && value.includes("[")) return JSON.parse(extractArray(value));
@@ -219,6 +246,57 @@ function extractArray(text) {
     if (lastBrace > 0) return `${slice.slice(0, lastBrace + 1)}]`;
     throw new Error("模型响应 JSON 解析失败");
   }
+}
+
+function bytesToBase64(bytes) {
+  let binary = "";
+  const chunk = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunk) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
+  }
+  return btoa(binary);
+}
+
+function base64ToBytes(base64) {
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return bytes;
+}
+
+/** 按魔数判断 base64 图片的真实格式（flux 文档称 PNG，实际返回 JPEG） */
+function base64ImageMime(base64) {
+  try {
+    const head = base64ToBytes(base64.slice(0, 8).padEnd(8, "="));
+    if (head[0] === 0xff && head[1] === 0xd8) return "image/jpeg";
+    if (head[0] === 0x89 && head[1] === 0x50) return "image/png";
+    if (head[0] === 0x52 && head[1] === 0x49) return "image/webp";
+  } catch {
+    // 魔数不可读时按默认处理
+  }
+  return "image/png";
+}
+
+/** 文生图返回形态不一：flux 为 { image: base64 }，部分模型直接返回 PNG/JPEG 字节流 */
+async function imageResultToDataUrl(out) {
+  if (!out) return "";
+  if (typeof out === "string") {
+    return out.startsWith("data:image/") ? out : `data:${base64ImageMime(out)};base64,${out}`;
+  }
+  if (typeof out.image === "string" && out.image) {
+    return out.image.startsWith("data:image/")
+      ? out.image
+      : `data:${base64ImageMime(out.image)};base64,${out.image}`;
+  }
+  let buffer = null;
+  if (out instanceof Response) buffer = await out.arrayBuffer();
+  else if (out instanceof ReadableStream) buffer = await new Response(out).arrayBuffer();
+  else if (out instanceof ArrayBuffer) buffer = out;
+  else if (ArrayBuffer.isView(out)) buffer = out.buffer.slice(out.byteOffset, out.byteOffset + out.byteLength);
+  if (!buffer || buffer.byteLength === 0) return "";
+  const bytes = new Uint8Array(buffer);
+  const jpeg = bytes[0] === 0xff && bytes[1] === 0xd8;
+  return `data:image/${jpeg ? "jpeg" : "png"};base64,${bytesToBase64(bytes)}`;
 }
 
 function sanitizeMenuItems(items) {
@@ -1208,6 +1286,101 @@ export async function onRequest(context) {
     } catch (error) {
       return sendJson({ error: `识别失败：${error.message}`, raw: rawOcr }, 502);
     }
+  }
+
+  // ---- 酒款配图：按固定风格生成（中文信息 → 英文视觉描述 → 文生图）----
+  if (request.method === "POST" && path === "/drink-image") {
+    const username = await getAuthUser(request, env);
+    if (!username) return sendJson({ error: "未登录或登录已过期" }, 401);
+    const since = Date.now() - lastDrinkImageAt;
+    if (since < DRINK_IMAGE_MIN_INTERVAL_MS) {
+      return sendJson(
+        { error: `生成过于频繁，请 ${Math.ceil((DRINK_IMAGE_MIN_INTERVAL_MS - since) / 1000)} 秒后重试` },
+        429,
+      );
+    }
+    lastDrinkImageAt = Date.now();
+    if (!env.AI) return sendJson({ error: "AI 服务未配置" }, 503);
+    let body;
+    try {
+      body = await readBody(request);
+    } catch (error) {
+      return sendJson({ error: error.message }, 400);
+    }
+    const field = (v, max) => (typeof v === "string" ? v.trim().slice(0, max) : "");
+    const glass = field(body.glass, 40);
+    const ingredients = field(body.ingredients, 300);
+    if (!glass && !ingredients) return sendJson({ error: "请先填写杯子类型与详细配料" }, 400);
+    const brief = [
+      field(body.name, 60) && `酒名：${field(body.name, 60)}`,
+      glass && `杯子类型：${glass}`,
+      ingredients && `详细配料：${ingredients}`,
+      field(body.flavor, 120) && `风味：${field(body.flavor, 120)}`,
+    ]
+      .filter(Boolean)
+      .join("；");
+    try {
+      let visual = "";
+      try {
+        const descOut = await env.AI.run(TEXT_MODEL, {
+          messages: [{ role: "user", content: DRINK_IMAGE_DESC_PROMPT + brief }],
+          max_tokens: 200,
+          temperature: 0.4,
+        });
+        visual = extractText(descOut?.response ?? descOut?.result ?? "")
+          .replace(/[\r\n]+/g, " ")
+          .replace(/^["'\s]+|["'\s]+$/g, "")
+          .slice(0, 400)
+          .trim();
+      } catch (error) {
+        console.warn("[drink-image] 视觉描述生成失败，回退原始字段:", error.message);
+      }
+      const prompt = `${DRINK_IMAGE_STYLE_PROMPT}, subject: ${visual || brief}`;
+      const out = await env.AI.run(IMAGE_MODEL, { prompt, steps: 8 });
+      const image = await imageResultToDataUrl(out);
+      if (!image) throw new Error(`模型未返回图片：${JSON.stringify(out).slice(0, 200)}`);
+      return sendJson({ image, prompt });
+    } catch (error) {
+      return sendJson({ error: `生成失败：${error.message}` }, 502);
+    }
+  }
+
+  // ---- 酒款配图：压缩图入库（KV），返回可直链短 URL ----
+  if (request.method === "POST" && path === "/drink-image/store") {
+    const username = await getAuthUser(request, env);
+    if (!username) return sendJson({ error: "未登录或登录已过期" }, 401);
+    let body;
+    try {
+      body = await readBody(request);
+    } catch (error) {
+      return sendJson({ error: error.message }, 400);
+    }
+    const image = typeof body.image === "string" ? body.image : "";
+    if (!/^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/.test(image)) {
+      return sendJson({ error: "图片格式不支持（需 jpeg/png/webp data URL）" }, 400);
+    }
+    if (image.length > DRINK_IMAGE_MAX_BYTES) {
+      return sendJson({ error: `图片过大（${Math.round(image.length / 1024)}KB），请压缩后重试` }, 400);
+    }
+    const imageId = `img_${bytesToHex(crypto.getRandomValues(new Uint8Array(12)))}`;
+    await env.TIPSY_KV.put(`${DRINK_IMAGE_KEY_PREFIX}${imageId}`, image);
+    return sendJson({ url: `/api/drink-image/${imageId}` });
+  }
+
+  // ---- 酒款配图：直链读取（<img> 不能带 Authorization，靠 96 位随机 ID 防枚举）----
+  if (request.method === "GET" && path.startsWith("/drink-image/")) {
+    const imageId = path.slice("/drink-image/".length);
+    if (!/^img_[0-9a-f]{24}$/.test(imageId)) return sendJson({ error: "图片不存在" }, 404);
+    const image = await env.TIPSY_KV.get(`${DRINK_IMAGE_KEY_PREFIX}${imageId}`);
+    const match = image && /^data:(image\/[a-z]+);base64,([A-Za-z0-9+/=]+)$/.exec(image);
+    if (!match) return sendJson({ error: "图片不存在" }, 404);
+    return new Response(base64ToBytes(match[2]), {
+      headers: {
+        "Content-Type": match[1],
+        "Cache-Control": "public, max-age=31536000, immutable",
+        ...CORS_HEADERS,
+      },
+    });
   }
 
   // ---- 印记卡片 AI 一句话 ----

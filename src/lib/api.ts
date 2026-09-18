@@ -257,6 +257,47 @@ export async function importMenu(image: string): Promise<MenuImportItem[]> {
   return data.drinks ?? [];
 }
 
+/** 酒款配图：按固定风格 AI 生成（杯子类型 + 详细配料 → 英语视觉描述 → 文生图） */
+export async function generateDrinkImage(payload: {
+  name: string;
+  glass: string;
+  ingredients: string;
+  flavor: string;
+}): Promise<{ image: string; prompt: string }> {
+  const res = await fetch(`${API_BASE}/drink-image`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}),
+    },
+    body: JSON.stringify(payload),
+  });
+  const data = (await res.json().catch(() => ({}))) as {
+    image?: string;
+    prompt?: string;
+    error?: string;
+  };
+  if (!res.ok || data.error) throw new Error(data.error ?? `生成失败（${res.status}）`);
+  if (!data.image) throw new Error("AI 未返回图片，请重试");
+  return { image: data.image, prompt: data.prompt ?? "" };
+}
+
+/** 酒款配图：压缩图写入 KV，返回可直链短 URL（酒款记录只存这个短路径） */
+export async function storeDrinkImage(image: string): Promise<string> {
+  const res = await fetch(`${API_BASE}/drink-image/store`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      ...(getToken() ? { Authorization: `Bearer ${getToken()}` } : {}),
+    },
+    body: JSON.stringify({ image }),
+  });
+  const data = (await res.json().catch(() => ({}))) as { url?: string; error?: string };
+  if (!res.ok || data.error) throw new Error(data.error ?? `图片保存失败（${res.status}）`);
+  if (!data.url) throw new Error("图片保存失败，请重试");
+  return data.url;
+}
+
 /** 天气：前端直连 uapis.cn（免 key、支持 CORS、按客户端 IP 定位） */
 export async function fetchWeather(): Promise<WeatherInfo> {
   const res = await fetch("https://uapis.cn/api/v1/misc/weather?lang=zh");
