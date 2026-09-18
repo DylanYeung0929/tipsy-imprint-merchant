@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Lock, User } from "lucide-react";
 import { login, register } from "../lib/auth";
+import { Alert } from "../components/ui";
 
 export function LoginPage({ onSuccess }: { onSuccess: (username: string) => void }) {
   const [mode, setMode] = useState<"login" | "register">("login");
@@ -42,7 +43,7 @@ export function LoginPage({ onSuccess }: { onSuccess: (username: string) => void
           <label className="block">
             <span className="mb-1 block text-xs text-stone-500">账号</span>
             <div className="relative">
-              <User className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-stone-600" aria-hidden="true" />
+              <User className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-fg-faint" aria-hidden="true" />
               <input
                 className="input w-full pl-9"
                 value={username}
@@ -55,7 +56,7 @@ export function LoginPage({ onSuccess }: { onSuccess: (username: string) => void
           <label className="block">
             <span className="mb-1 block text-xs text-stone-500">密码</span>
             <div className="relative">
-              <Lock className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-stone-600" aria-hidden="true" />
+              <Lock className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-fg-faint" aria-hidden="true" />
               <input
                 className="input w-full pl-9"
                 type="password"
@@ -70,11 +71,7 @@ export function LoginPage({ onSuccess }: { onSuccess: (username: string) => void
             </div>
           </label>
 
-          {error && (
-            <p className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">
-              {error}
-            </p>
-          )}
+          {error && <Alert>{error}</Alert>}
 
           <button className="btn-primary w-full justify-center" onClick={() => void submit()} disabled={busy}>
             {busy ? "处理中…" : mode === "login" ? "登录" : "注册并登录"}
@@ -91,7 +88,7 @@ export function LoginPage({ onSuccess }: { onSuccess: (username: string) => void
           </button>
 
           {mode === "login" && (
-            <p className="text-center text-xs text-stone-600">
+            <p className="text-center text-xs text-fg-faint">
               演示账号：owner / 123456
             </p>
           )}

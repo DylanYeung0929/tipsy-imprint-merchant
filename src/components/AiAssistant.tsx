@@ -220,7 +220,7 @@ export function AiAssistant() {
               rows={1}
               placeholder="输入问题，Enter 发送"
               aria-label="向助手提问"
-              className="max-h-28 min-h-10 flex-1 resize-none rounded-xl border border-white/10 bg-white/[.04] px-3 py-2.5 text-[13px] leading-5 text-stone-200 placeholder:text-stone-600 focus:border-amber-400/40 focus:outline-none"
+              className="max-h-28 min-h-10 flex-1 resize-none rounded-xl border border-white/10 bg-white/[.04] px-3 py-2.5 text-[13px] leading-5 text-stone-200 placeholder:text-fg-faint focus:border-amber-400/40 focus:outline-none"
             />
             <button
               type="button"

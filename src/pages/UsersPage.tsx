@@ -1,22 +1,27 @@
-import { useEffect, useState } from "react";
-import type { Drink, User } from "../types";
+import { Users } from "lucide-react";
 import { fetchDrinks, fetchUsers } from "../lib/api";
-import { PageHeader } from "../components/ui";
+import { useLoad } from "../lib/useLoad";
+import {
+  Alert,
+  Badge,
+  EmptyState,
+  PageHeader,
+  Skeleton,
+  activityLevelOf,
+  activityTone,
+} from "../components/ui";
 
 export function UsersPage() {
-  const [users, setUsers] = useState<User[]>([]);
-  const [drinks, setDrinks] = useState<Drink[]>([]);
+  const { data, loading, error, reload } = useLoad(async () => {
+    const [users, drinks] = await Promise.all([fetchUsers(), fetchDrinks()]);
+    return { users, drinks };
+  });
 
-  useEffect(() => {
-    void (async () => {
-      const [u, d] = await Promise.all([fetchUsers(), fetchDrinks()]);
-      setUsers(u);
-      setDrinks(d);
-    })();
-  }, []);
-
+  const users = data?.users ?? [];
+  const drinks = data?.drinks ?? [];
   const drinkName = (id?: string) => drinks.find((d) => d.id === id)?.name ?? "—";
   const totalSessions = users.reduce((a, u) => a + u.sessionCount, 0);
+  const isEmpty = !loading && users.length === 0;
 
   return (
     <div>
@@ -29,10 +34,20 @@ export function UsersPage() {
       <div className="card p-6">
         <div className="mb-4 flex items-center justify-between">
           <h2 className="text-lg font-semibold text-stone-100">顾客列表</h2>
-          <span className="text-xs text-stone-600">
+          <span className="text-xs text-fg-faint">
             {users.length} 位顾客 · 累计 {totalSessions} 次会话
           </span>
         </div>
+
+        {error && (
+          <Alert className="mb-4">
+            {error}
+            <button className="ml-3 underline hover:text-red-200" onClick={() => void reload()}>
+              重试
+            </button>
+          </Alert>
+        )}
+
         <div className="overflow-x-auto">
           <table className="table-base min-w-[640px]">
             <thead>
@@ -46,27 +61,39 @@ export function UsersPage() {
               </tr>
             </thead>
             <tbody>
-              {users.map((u) => {
-                const level = u.sessionCount >= 8 ? "高频" : u.sessionCount >= 4 ? "常客" : "新客";
-                const color =
-                  level === "高频"
-                    ? "bg-amber-500/15 text-amber-300"
-                    : level === "常客"
-                      ? "bg-emerald-500/15 text-emerald-300"
-                      : "bg-white/10 text-stone-400";
-                return (
-                  <tr key={u.id} className="hover:bg-white/[0.02]">
-                    <td className="tabular-nums text-stone-500">{u.id}</td>
-                    <td className="text-stone-100">{u.nickname}</td>
-                    <td className="tabular-nums">{u.sessionCount} 次</td>
-                    <td>{drinkName(u.favoriteDrinkId)}</td>
-                    <td className="tabular-nums text-stone-500">{u.lastActiveAt}</td>
-                    <td>
-                      <span className={`rounded px-2 py-0.5 text-xs ${color}`}>{level}</span>
-                    </td>
-                  </tr>
-                );
-              })}
+              {loading ? (
+                <tr>
+                  <td colSpan={6} className="border-0 py-4">
+                    <Skeleton className="h-5 w-full" />
+                  </td>
+                </tr>
+              ) : isEmpty ? (
+                <tr>
+                  <td colSpan={6} className="border-0">
+                    <EmptyState
+                      icon={Users}
+                      title="暂无顾客数据"
+                      description="顾客首次使用智能酒杯后，这里会自动生成画像与偏好。"
+                    />
+                  </td>
+                </tr>
+              ) : (
+                users.map((u) => {
+                  const level = activityLevelOf(u.sessionCount);
+                  return (
+                    <tr key={u.id}>
+                      <td className="tabular-nums text-stone-500">{u.id}</td>
+                      <td className="text-stone-100">{u.nickname}</td>
+                      <td className="tabular-nums">{u.sessionCount} 次</td>
+                      <td>{drinkName(u.favoriteDrinkId)}</td>
+                      <td className="tabular-nums text-stone-500">{u.lastActiveAt}</td>
+                      <td>
+                        <Badge tone={activityTone[level]}>{level}</Badge>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
             </tbody>
           </table>
         </div>

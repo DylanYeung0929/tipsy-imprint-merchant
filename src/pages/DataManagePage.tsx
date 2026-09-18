@@ -1,34 +1,35 @@
-import { useEffect, useMemo, useState } from "react";
-import { Search } from "lucide-react";
-import type { Drink, SensorEvent, Session, User } from "../types";
+import { useMemo, useState } from "react";
+import { Search, SearchX } from "lucide-react";
 import { fetchDrinks, fetchEvents, fetchSessions, fetchUsers } from "../lib/api";
 import { EVENT_TYPE_LABEL } from "../lib/mock";
-import { PageHeader } from "../components/ui";
+import { useLoad } from "../lib/useLoad";
+import { Alert, EmptyState, Input, PageHeader, Skeleton } from "../components/ui";
 
 export function DataManagePage() {
-  const [sessions, setSessions] = useState<Session[]>([]);
-  const [events, setEvents] = useState<SensorEvent[]>([]);
-  const [drinks, setDrinks] = useState<Drink[]>([]);
-  const [users, setUsers] = useState<User[]>([]);
+  const { data, loading, error, reload } = useLoad(async () => {
+    const [sessions, events, drinks, users] = await Promise.all([
+      fetchSessions(),
+      fetchEvents(),
+      fetchDrinks(),
+      fetchUsers(),
+    ]);
+    return { sessions, events, drinks, users };
+  });
+
+  const sessions = data?.sessions ?? [];
+  const events = data?.events ?? [];
+  const drinks = data?.drinks ?? [];
+  const users = data?.users ?? [];
   const [drinkFilter, setDrinkFilter] = useState("all");
   const [userFilter, setUserFilter] = useState("all");
   const [query, setQuery] = useState("");
   const [detailId, setDetailId] = useState<string | null>(null);
 
-  useEffect(() => {
-    void (async () => {
-      const [s, e, d, u] = await Promise.all([
-        fetchSessions(),
-        fetchEvents(),
-        fetchDrinks(),
-        fetchUsers(),
-      ]);
-      setSessions(s);
-      setEvents(e);
-      setDrinks(d);
-      setUsers(u);
-    })();
-  }, []);
+  const clearFilters = () => {
+    setDrinkFilter("all");
+    setUserFilter("all");
+    setQuery("");
+  };
 
   const drinkName = (id: string) => drinks.find((d) => d.id === id)?.name ?? id;
   const userName = (id: string) => users.find((u) => u.id === id)?.nickname ?? id;
@@ -60,15 +61,13 @@ export function DataManagePage() {
 
       <div className="card p-4">
         <div className="flex flex-wrap items-center gap-3">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-stone-600" aria-hidden="true" />
-            <input
-              className="input w-64 pl-9"
-              placeholder="搜索会话 / 酒款 / 用户"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-            />
-          </div>
+          <Input
+            icon={Search}
+            className="w-64"
+            placeholder="搜索会话 / 酒款 / 用户"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+          />
           <select className="input" value={drinkFilter} onChange={(e) => setDrinkFilter(e.target.value)}>
             <option value="all">全部酒款</option>
             {drinks.map((d) => (
@@ -81,11 +80,20 @@ export function DataManagePage() {
               <option key={u.id} value={u.id}>{u.nickname}</option>
             ))}
           </select>
-          <span className="ml-auto text-xs text-stone-600">
+          <span className="ml-auto text-xs text-fg-faint">
             共 {filtered.length} 条会话
           </span>
         </div>
       </div>
+
+      {error && (
+        <Alert className="mt-6">
+          {error}
+          <button className="ml-3 underline hover:text-red-200" onClick={() => void reload()}>
+            重试
+          </button>
+        </Alert>
+      )}
 
       <div className="card mt-6 p-6">
         <div className="overflow-x-auto">
@@ -104,32 +112,48 @@ export function DataManagePage() {
               </tr>
             </thead>
             <tbody>
-              {filtered.map((s) => (
-                <tr key={s.id} className="hover:bg-white/[0.02]">
-                  <td className="tabular-nums text-stone-500">{s.id}</td>
-                  <td className="text-stone-100">{userName(s.userId)}</td>
-                  <td>{drinkName(s.drinkId)}</td>
-                  <td className="tabular-nums text-stone-500">{s.startedAt}</td>
-                  <td className="tabular-nums">{s.pickupCount} 次</td>
-                  <td className="tabular-nums">{s.sipVolumeTotal} ml</td>
-                  <td className="tabular-nums">{Math.round(s.shakeMax * 100)}%</td>
-                  <td>{s.chugged ? <span className="text-emerald-400">是</span> : <span className="text-stone-600">否</span>}</td>
-                  <td>
-                    <button
-                      className="text-xs text-amber-400 hover:text-amber-300"
-                      onClick={() => setDetailId(detailId === s.id ? null : s.id)}
-                    >
-                      {detailId === s.id ? "收起事件" : "查看事件"}
-                    </button>
-                  </td>
-                </tr>
-              ))}
-              {filtered.length === 0 && (
+              {loading ? (
                 <tr>
-                  <td colSpan={9} className="py-10 text-center text-stone-600">
-                    没有符合条件的会话
+                  <td colSpan={9} className="border-0 py-4">
+                    <Skeleton className="h-5 w-full" />
                   </td>
                 </tr>
+              ) : filtered.length === 0 ? (
+                <tr>
+                  <td colSpan={9} className="border-0">
+                    <EmptyState
+                      icon={SearchX}
+                      title="没有符合条件的会话"
+                      description="调整筛选条件，或清除筛选查看全部会话。"
+                      action={
+                        <button className="btn-ghost" onClick={clearFilters}>
+                          清除筛选
+                        </button>
+                      }
+                    />
+                  </td>
+                </tr>
+              ) : (
+                filtered.map((s) => (
+                  <tr key={s.id}>
+                    <td className="tabular-nums text-stone-500">{s.id}</td>
+                    <td className="text-stone-100">{userName(s.userId)}</td>
+                    <td>{drinkName(s.drinkId)}</td>
+                    <td className="tabular-nums text-stone-500">{s.startedAt}</td>
+                    <td className="tabular-nums">{s.pickupCount} 次</td>
+                    <td className="tabular-nums">{s.sipVolumeTotal} ml</td>
+                    <td className="tabular-nums">{Math.round(s.shakeMax * 100)}%</td>
+                    <td>{s.chugged ? <span className="text-emerald-400">是</span> : <span className="text-fg-faint">否</span>}</td>
+                    <td>
+                      <button
+                        className="text-xs text-amber-400 hover:text-amber-300"
+                        onClick={() => setDetailId(detailId === s.id ? null : s.id)}
+                      >
+                        {detailId === s.id ? "收起事件" : "查看事件"}
+                      </button>
+                    </td>
+                  </tr>
+                ))
               )}
             </tbody>
           </table>
@@ -143,7 +167,7 @@ export function DataManagePage() {
             <ol className="mt-3 space-y-1.5">
               {sessionEvents(detailId).map((e) => (
                 <li key={e.id} className="flex items-center gap-3 text-sm">
-                  <span className="w-40 shrink-0 tabular-nums text-xs text-stone-600">{e.timestamp}</span>
+                  <span className="w-40 shrink-0 tabular-nums text-xs text-fg-faint">{e.timestamp}</span>
                   <span className="w-20 shrink-0 rounded bg-amber-500/10 px-2 py-0.5 text-center text-xs text-amber-300">
                     {EVENT_TYPE_LABEL[e.type]}
                   </span>

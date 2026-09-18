@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { GlassWater, Hand, Radio, Sparkles, Users } from "lucide-react";
-import type { AnalysisPayload, AnalysisReport, Drink, DrinkStats, User } from "../types";
+import { Link } from "react-router-dom";
+import { BarChart3, GlassWater, Hand, Info, Radio, Sparkles, Users } from "lucide-react";
+import type { AnalysisPayload, AnalysisReport, Drink, User } from "../types";
 import {
   fetchDrinks,
   fetchSessions,
@@ -11,7 +12,16 @@ import {
   type TelemetrySummary,
 } from "../lib/api";
 import { mockStats } from "../lib/mock";
-import { MatchBar, PageHeader, SimpleBarChart, StatCard } from "../components/ui";
+import { useLoad } from "../lib/useLoad";
+import {
+  Alert,
+  EmptyState,
+  MatchBar,
+  PageHeader,
+  SimpleBarChart,
+  Skeleton,
+  StatCard,
+} from "../components/ui";
 
 /** 真实遥测 → AI 分析负载：按 drinkId/name 匹配酒单取 designIntent，匹配不到则合成占位酒款 */
 function buildTelemetryPayload(drinks: Drink[], t: TelemetrySummary): AnalysisPayload {
@@ -43,37 +53,30 @@ function buildTelemetryPayload(drinks: Drink[], t: TelemetrySummary): AnalysisPa
 }
 
 export function DashboardPage() {
-  const [drinks, setDrinks] = useState<Drink[]>([]);
-  const [stats, setStats] = useState<DrinkStats[]>(mockStats);
-  const [telemetry, setTelemetry] = useState<TelemetrySummary | null>(null);
-  const [sessionCount, setSessionCount] = useState(0);
-  const [userCount, setUserCount] = useState(0);
+  const { data, loading: pageLoading, error: pageError, reload } = useLoad(async () => {
+    const [drinks, sessions, users] = await Promise.all([
+      fetchDrinks(),
+      fetchSessions(),
+      fetchUsers(),
+    ]);
+    // 真实遥测不可用时回退内置演示数据（页面上方显式标注）
+    const telemetry = await fetchTelemetrySummary().catch(() => null);
+    return { drinks, sessions, users, telemetry };
+  });
+
   const [report, setReport] = useState<AnalysisReport | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [progress, setProgress] = useState(0);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  useEffect(() => {
-    void (async () => {
-      const [d, s, u] = await Promise.all([
-        fetchDrinks(),
-        fetchSessions(),
-        fetchUsers(),
-      ]);
-      setDrinks(d);
-      setSessionCount(s.length);
-      setUserCount(u.length);
-      // 真实遥测可用时优先展示（无数据/未登录失败则保持 mock）
-      const t = await fetchTelemetrySummary().catch(() => null);
-      if (t && t.stats.length > 0) {
-        setTelemetry(t);
-        setStats(t.stats);
-        setSessionCount(t.sessionCount);
-        setUserCount(t.userCount);
-      }
-    })();
-  }, []);
+  const drinks = data?.drinks ?? [];
+  const telemetry: TelemetrySummary | null =
+    data?.telemetry && data.telemetry.stats.length > 0 ? data.telemetry : null;
+  const isReal = Boolean(telemetry);
+  const stats = telemetry?.stats ?? mockStats;
+  const sessionCount = telemetry?.sessionCount ?? data?.sessions.length ?? 0;
+  const userCount = telemetry?.userCount ?? data?.users.length ?? 0;
 
   useEffect(
     () => () => {
@@ -130,7 +133,6 @@ export function DashboardPage() {
           (stats.reduce((a, s) => a + s.chugRate * s.sessions, 0) / totalSessions) * 100,
         );
 
-  const isReal = Boolean(telemetry && telemetry.stats.length > 0);
   const rows = stats.map((s) => ({
     key: s.drinkId || s.drinkName || "unknown",
     name: s.drinkName ?? drinks.find((d) => d.id === s.drinkId)?.name ?? "未知酒款",
@@ -152,11 +154,39 @@ export function DashboardPage() {
         </p>
       )}
 
+      {!pageLoading && !isReal && (
+        <Alert tone="info" className="mb-4 flex items-center gap-2">
+          <Info className="size-3.5 shrink-0" aria-hidden="true" />
+          当前展示内置演示数据 —— 设备接入并完成会话后自动切换为真实遥测。
+        </Alert>
+      )}
+
+      {pageError && (
+        <Alert className="mb-4">
+          {pageError}
+          <button className="ml-3 underline hover:text-red-200" onClick={() => void reload()}>
+            重试
+          </button>
+        </Alert>
+      )}
+
       <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <StatCard icon={GlassWater} label="累计会话" value={String(sessionCount)} unit="次" hint={`覆盖 ${isReal ? rows.length : drinks.length} 款酒`} />
-        <StatCard icon={Users} label="活跃用户" value={String(userCount)} unit="人" hint={isReal ? "真实遥测去重用户" : "近 7 天有饮酒记录"} />
-        <StatCard icon={Hand} label="平均拿起次数" value={String(avgPickup)} unit="次/杯" hint="全场加权平均" />
-        <StatCard icon={Sparkles} label="一饮而尽率" value={String(chugRate)} unit="%" hint="畅饮型酒款指标" />
+        {pageLoading ? (
+          [0, 1, 2, 3].map((i) => (
+            <div key={i} className="card p-5">
+              <Skeleton className="h-4 w-24" />
+              <Skeleton className="mt-4 h-9 w-20" />
+              <Skeleton className="mt-2 h-3 w-28" />
+            </div>
+          ))
+        ) : (
+          <>
+            <StatCard icon={GlassWater} label="累计会话" value={String(sessionCount)} unit="次" hint={`覆盖 ${isReal ? rows.length : drinks.length} 款酒`} />
+            <StatCard icon={Users} label="活跃用户" value={String(userCount)} unit="人" hint={isReal ? "真实遥测去重用户" : "近 7 天有饮酒记录"} />
+            <StatCard icon={Hand} label="平均拿起次数" value={String(avgPickup)} unit="次/杯" hint="全场加权平均" />
+            <StatCard icon={Sparkles} label="一饮而尽率" value={String(chugRate)} unit="%" hint="畅饮型酒款指标" />
+          </>
+        )}
       </section>
 
       <section className="mt-8 grid items-start gap-6 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)]">
@@ -175,19 +205,42 @@ export function DashboardPage() {
                 </tr>
               </thead>
               <tbody>
-                {rows.map(({ key, name, s }) => (
-                  <tr key={key} className="hover:bg-white/[0.02]">
-                    <td className="text-stone-100">
-                      <span className="mr-3 inline-block size-2 rounded-full bg-amber-400" />
-                      {name}
+                {pageLoading ? (
+                  <tr>
+                    <td colSpan={6} className="border-0 py-4">
+                      <Skeleton className="h-5 w-full" />
                     </td>
-                    <td className="tabular-nums">{s.avgPickupCount} 次</td>
-                    <td className="tabular-nums">{s.avgSipVolume} ml</td>
-                    <td className="tabular-nums">{Math.round(s.avgShake * 100)}%</td>
-                    <td className="tabular-nums">{Math.round(s.chugRate * 100)}%</td>
-                    <td className="tabular-nums">{s.avgDurationMin} min</td>
                   </tr>
-                ))}
+                ) : rows.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="border-0">
+                      <EmptyState
+                        icon={BarChart3}
+                        title="暂无行为数据"
+                        description="完成第一场智能酒杯会话后，这里会展示各酒款的行为对比。"
+                        action={
+                          <Link className="btn-ghost" to="/menu">
+                            去配置酒单
+                          </Link>
+                        }
+                      />
+                    </td>
+                  </tr>
+                ) : (
+                  rows.map(({ key, name, s }) => (
+                    <tr key={key}>
+                      <td className="text-stone-100">
+                        <span className="mr-3 inline-block size-2 rounded-full bg-amber-400" />
+                        {name}
+                      </td>
+                      <td className="tabular-nums">{s.avgPickupCount} 次</td>
+                      <td className="tabular-nums">{s.avgSipVolume} ml</td>
+                      <td className="tabular-nums">{Math.round(s.avgShake * 100)}%</td>
+                      <td className="tabular-nums">{Math.round(s.chugRate * 100)}%</td>
+                      <td className="tabular-nums">{s.avgDurationMin} min</td>
+                    </tr>
+                  ))
+                )}
               </tbody>
             </table>
           </div>
@@ -225,11 +278,7 @@ export function DashboardPage() {
             </div>
           )}
 
-          {error && (
-            <p className="mt-4 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">
-              {error}
-            </p>
-          )}
+          {error && <Alert className="mt-4">{error}</Alert>}
 
           {!report && !loading && (
             <p className="mt-6 text-sm leading-6 text-stone-500">
@@ -241,7 +290,7 @@ export function DashboardPage() {
 
           {report && (
             <div className="mt-5 flex-1 space-y-5">
-              <p className="text-xs text-stone-600">
+              <p className="text-xs text-fg-faint">
                 {new Date(report.generatedAt).toLocaleString("zh-CN")} · 来源：
                 <span className={report.source === "claude" ? "text-emerald-400" : "text-amber-400"}>
                   {report.source === "claude" ? " Claude API" : " Mock 演示"}

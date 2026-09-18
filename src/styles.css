@@ -18,12 +18,17 @@ body {
   margin: 0;
   min-width: 320px;
   min-height: 100dvh;
-  background: #0d0b0a;
-  color: #fafaf9;
+  @apply bg-ink text-fg;
 }
 
 h1, h2, h3 {
   letter-spacing: 0.04em;
+}
+
+/* 全局键盘焦点环（鼠标点击不触发） */
+:focus-visible {
+  outline: 2px solid rgb(251 191 36 / 0.75);
+  outline-offset: 2px;
 }
 
 .display-en {
@@ -50,7 +55,7 @@ h1, h2, h3 {
 
 @layer components {
   .card {
-    @apply rounded-xl border border-white/10 bg-white/[0.03];
+    @apply rounded-xl border border-hairline bg-white/[0.03];
   }
 
   .card-title {
@@ -62,11 +67,19 @@ h1, h2, h3 {
   }
 
   .btn-ghost {
-    @apply inline-flex items-center gap-2 rounded-lg border border-white/15 px-4 py-2 text-sm text-stone-300 transition-colors hover:border-white/30 hover:text-white;
+    @apply inline-flex items-center gap-2 rounded-lg border border-white/15 px-4 py-2 text-sm text-stone-300 transition-colors hover:border-white/30 hover:text-white disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
+  .btn-danger {
+    @apply inline-flex items-center gap-2 rounded-lg bg-red-500/90 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-red-500 disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
+  .icon-btn {
+    @apply rounded p-1.5 text-stone-500 transition-colors hover:bg-white/5 hover:text-stone-200;
   }
 
   .input {
-    @apply rounded-lg border border-white/15 bg-white/[0.04] px-3 py-2 text-sm text-stone-100 placeholder-stone-600 outline-none transition-colors focus:border-amber-400/60;
+    @apply rounded-lg border border-white/15 bg-white/[0.04] px-3 py-2 text-sm text-stone-100 placeholder-stone-600 transition-colors focus:border-amber-400/60;
   }
 
   .table-base {
@@ -74,11 +87,26 @@ h1, h2, h3 {
   }
 
   .table-base thead th {
-    @apply border-y border-white/10 py-3 text-xs font-normal text-stone-500;
+    @apply border-y border-hairline py-3 text-xs font-normal text-stone-500;
   }
 
   .table-base tbody td {
-    @apply border-b border-white/10 py-3.5 text-sm text-stone-300;
+    @apply border-b border-hairline py-3.5 text-sm text-stone-300;
+  }
+
+  .table-base tbody tr {
+    @apply transition-colors hover:bg-white/[0.045];
+  }
+
+  /* 首列吸顶：需要不透明底（默认/悬停色 = 卡片底 #141211 / 卡片底 + white/4.5% 叠加） */
+  .table-sticky td:first-child,
+  .table-sticky th:first-child {
+    @apply sticky left-0 z-[1];
+    background-color: #141211;
+  }
+
+  .table-sticky tbody tr:hover td:first-child {
+    background-color: #1f1d1c;
   }
 }
 
@@ -106,4 +134,15 @@ h1, h2, h3 {
 }
 ::-webkit-scrollbar-track {
   background: transparent;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

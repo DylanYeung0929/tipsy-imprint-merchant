@@ -3,21 +3,7 @@ import { RadioTower, Sparkles, Terminal, Waves } from "lucide-react";
 import type { EspEvent, EspSession, EventType } from "../types";
 import { EVENT_TYPE_LABEL } from "../lib/mock";
 import { fetchEspEvents, fetchEspSessions, fetchSessionAiNote } from "../lib/api";
-import { PageHeader } from "../components/ui";
-
-const TYPE_STYLE: Record<EventType, string> = {
-  pickup: "bg-amber-500/10 text-amber-300",
-  putdown: "bg-white/10 text-stone-400",
-  sip: "bg-emerald-500/10 text-emerald-300",
-  shake: "bg-sky-500/10 text-sky-300",
-  chug: "bg-rose-500/10 text-rose-300",
-};
-
-const STATUS_LABEL: Record<EspSession["status"], string> = {
-  ACTIVE: "进行中",
-  STOP_REQUESTED: "停止中",
-  COMPLETED: "已完成",
-};
+import { Alert, Badge, PageHeader, eventTypeMeta, sessionStatusMeta } from "../components/ui";
 
 const EVENT_TYPES: EventType[] = ["pickup", "putdown", "sip", "shake", "chug"];
 
@@ -67,7 +53,8 @@ export function DataReceivePage() {
   const [status, setStatus] = useState<EspSession["status"]>("COMPLETED");
   const [note, setNote] = useState("");
   const [noteLoading, setNoteLoading] = useState(false);
-  const [error, setError] = useState("");
+  const [eventsError, setEventsError] = useState("");
+  const [noteError, setNoteError] = useState("");
 
   const selected = sessions.find((s) => s.id === selectedId) ?? null;
 
@@ -102,9 +89,9 @@ export function DataReceivePage() {
         if (!alive) return;
         setEvents(r.events);
         setStatus(r.status);
-        setError("");
+        setEventsError("");
       } catch (e) {
-        if (alive) setError(e instanceof Error ? e.message : "事件拉取失败");
+        if (alive) setEventsError(e instanceof Error ? e.message : "事件拉取失败");
       }
     };
     void tick();
@@ -124,11 +111,11 @@ export function DataReceivePage() {
   const runAiNote = useCallback(async () => {
     if (!selectedId) return;
     setNoteLoading(true);
-    setError("");
+    setNoteError("");
     try {
       setNote(await fetchSessionAiNote(selectedId));
     } catch (e) {
-      setError(e instanceof Error ? e.message : "AI 解读失败");
+      setNoteError(e instanceof Error ? e.message : "AI 解读失败");
     } finally {
       setNoteLoading(false);
     }
@@ -150,9 +137,7 @@ export function DataReceivePage() {
               行为事件流
             </h2>
             {selected && (
-              <span className="rounded bg-white/5 px-2 py-0.5 text-xs text-stone-400">
-                {STATUS_LABEL[status]}
-              </span>
+              <Badge tone={sessionStatusMeta[status].tone}>{sessionStatusMeta[status].label}</Badge>
             )}
           </div>
 
@@ -168,25 +153,25 @@ export function DataReceivePage() {
                 }`}
               >
                 {s.drink?.name ?? "未知酒款"}
-                <span className="ml-2 text-[10px] text-stone-500">{STATUS_LABEL[s.status]}</span>
+                <span className="ml-2 text-2xs text-stone-500">{sessionStatusMeta[s.status].label}</span>
               </button>
             ))}
             {sessions.length === 0 && (
-              <p className="py-2 text-sm text-stone-600">暂无遥测会话，等待设备接入…</p>
+              <p className="py-2 text-sm text-fg-muted">暂无遥测会话，等待设备接入…</p>
             )}
           </div>
 
           {selected && (
-            <p className="mt-1 text-xs text-stone-600">
+            <p className="mt-1 text-xs text-fg-faint">
               {selected.id} · {selected.device_id} · 开始于 {fmtTime(selected.started_at_ms ?? selected.created_at_ms)}
             </p>
           )}
 
           <div className="mt-3 flex flex-wrap gap-2" data-event-counts>
             {EVENT_TYPES.map((t) => (
-              <span key={t} className={`rounded px-2 py-0.5 text-xs tabular-nums ${TYPE_STYLE[t]}`}>
+              <Badge key={t} tone={eventTypeMeta[t].tone} className="tabular-nums">
                 {EVENT_TYPE_LABEL[t]} {counts[t]}
-              </span>
+              </Badge>
             ))}
           </div>
 
@@ -196,25 +181,30 @@ export function DataReceivePage() {
                 key={e.id}
                 className="flex items-center gap-3 rounded-lg border border-white/10 bg-white/[0.03] px-4 py-2.5"
               >
-                <span className="w-20 shrink-0 text-xs tabular-nums text-stone-600">{fmtTime(e.tsMs)}</span>
-                <span className={`w-20 shrink-0 whitespace-nowrap rounded px-2 py-0.5 text-center text-xs ${TYPE_STYLE[e.type]}`}>
+                <span className="w-20 shrink-0 text-xs tabular-nums text-fg-faint">{fmtTime(e.tsMs)}</span>
+                <Badge
+                  tone={eventTypeMeta[e.type].tone}
+                  className="w-20 shrink-0 justify-center whitespace-nowrap"
+                >
                   {EVENT_TYPE_LABEL[e.type]}
-                </span>
+                </Badge>
                 <span className="text-sm text-stone-300">
                   {e.drinkName ?? "未知酒款"}
                   {e.value !== undefined && (
                     <span className="ml-2 tabular-nums text-stone-500">{fmtValue(e)}</span>
                   )}
                 </span>
-                <span className="ml-auto text-xs text-stone-600">{e.userId ?? "匿名"}</span>
+                <span className="ml-auto text-xs text-fg-faint">{e.userId ?? "匿名"}</span>
               </li>
             ))}
             {selectedId && events.length === 0 && (
-              <li className="py-8 text-center text-sm text-stone-600">
+              <li className="py-8 text-center text-sm text-fg-muted">
                 该会话暂无事件，等待设备上传数据…
               </li>
             )}
           </ol>
+
+          {eventsError && <Alert className="mt-3">{eventsError}</Alert>}
 
           <div className="mt-5 border-t border-white/10 pt-4">
             <div className="flex items-center justify-between">
@@ -232,18 +222,13 @@ export function DataReceivePage() {
                 {note}
               </p>
             )}
-            {!note && !noteLoading && (
-              <p className="mt-2 text-xs text-stone-600">
+            {noteError && <Alert className="mt-3">{noteError}</Alert>}
+            {!note && !noteLoading && !noteError && (
+              <p className="mt-2 text-xs text-fg-faint">
                 将本场事件时间线与指标交给 AI，生成这位顾客的饮酒风格画像与门店观察建议。
               </p>
             )}
           </div>
-
-          {error && (
-            <p className="mt-4 rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">
-              {error}
-            </p>
-          )}
         </div>
 
         <div className="space-y-6">
@@ -280,7 +265,7 @@ export function DataReceivePage() {
 
           <div className="card p-6">
             <h2 className="text-lg font-semibold text-stone-100">事件识别规则</h2>
-            <p className="mt-1 text-xs text-stone-600">后端从原始采样实时推导，阈值初值，待实机标定</p>
+            <p className="mt-1 text-xs text-fg-faint">后端从原始采样实时推导，阈值初值，待实机标定</p>
             <div className="mt-4 space-y-3">
               {RULES.map(([name, rule]) => (
                 <div key={name} className="flex items-start gap-3 text-sm">

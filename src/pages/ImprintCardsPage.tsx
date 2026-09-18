@@ -4,7 +4,7 @@ import type { Drink, ImprintCard, Session, User, WeatherInfo } from "../types";
 import { addSession, fetchDrinks, fetchSessions, fetchTelemetrySummary, fetchUsers, fetchWeather, imprintLine } from "../lib/api";
 import { buildImprint } from "../lib/mock";
 import { ImprintCard as ImprintCardView } from "../components/ImprintCard";
-import { Modal, PageHeader } from "../components/ui";
+import { Alert, EmptyState, Modal, PageHeader } from "../components/ui";
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -199,18 +199,26 @@ export function ImprintCardsPage() {
           );
         })}
         {imprints.length === 0 && (
-          <p className="col-span-full py-10 text-center text-sm text-stone-600">
-            暂无会话，印记卡片将随会话自动生成；也可从真实饮酒数据手动添加
-          </p>
+          <div className="col-span-full">
+            <EmptyState
+              icon={Stamp}
+              title="暂无印记卡片"
+              description="印记卡片将随会话自动生成，也可从真实饮酒数据手动添加。"
+              action={
+                <button type="button" className="btn-primary" onClick={openPicker}>
+                  <Plus className="size-4" aria-hidden="true" />
+                  添加印记
+                </button>
+              }
+            />
+          </div>
         )}
       </div>
 
       {pickerOpen && (
         <Modal title="从饮酒数据生成印记" onClose={() => setPickerOpen(false)}>
           <div className="space-y-4">
-            {pickerError && (
-              <p className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">{pickerError}</p>
-            )}
+            {pickerError && <Alert>{pickerError}</Alert>}
             {!pickerError && telemetry === null && (
               <p className="py-6 text-center text-sm text-stone-500">正在加载真实饮酒会话…</p>
             )}

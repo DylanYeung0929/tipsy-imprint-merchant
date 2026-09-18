@@ -1,8 +1,18 @@
-import { useEffect, useRef, useState } from "react";
-import { Camera, Loader2, Pencil, Plus, Trash2 } from "lucide-react";
+import { useRef, useState } from "react";
+import { Camera, Loader2, Pencil, Plus, Trash2, Wine } from "lucide-react";
 import type { Drink, MenuImportItem } from "../types";
 import { createDrink, deleteDrink, fetchDrinks, importMenu, updateDrink } from "../lib/api";
-import { Modal, PageHeader } from "../components/ui";
+import { useLoad } from "../lib/useLoad";
+import {
+  Alert,
+  Badge,
+  ConfirmDialog,
+  EmptyState,
+  Modal,
+  PageHeader,
+  Skeleton,
+  saleStatusMeta,
+} from "../components/ui";
 
 /** 压缩图片到最长边 maxDim 的 JPEG data URL，避免超过接口 4MB 限制 */
 function compressImage(file: File, maxDim = 1600): Promise<string> {
@@ -52,18 +62,16 @@ const emptyForm: FormState = {
 };
 
 export function MenuConfigPage() {
-  const [drinks, setDrinks] = useState<Drink[]>([]);
+  const { data, loading, error: loadError, reload } = useLoad(fetchDrinks);
+  const drinks = data ?? [];
   const [editing, setEditing] = useState<Drink | null>(null);
   const [creating, setCreating] = useState(false);
   const [form, setForm] = useState<FormState>(emptyForm);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-
-  const reload = async () => setDrinks(await fetchDrinks());
-
-  useEffect(() => {
-    void reload();
-  }, []);
+  const [pendingDelete, setPendingDelete] = useState<Drink | null>(null);
+  const [deleteBusy, setDeleteBusy] = useState(false);
+  const [deleteError, setDeleteError] = useState("");
 
   const openCreate = () => {
     setForm(emptyForm);
@@ -120,10 +128,19 @@ export function MenuConfigPage() {
     }
   };
 
-  const remove = async (d: Drink) => {
-    if (!window.confirm(`确定删除「${d.name}」？已有会话数据不受影响，但统计将无法关联。`)) return;
-    await deleteDrink(d.id);
-    await reload();
+  const remove = async () => {
+    if (!pendingDelete || deleteBusy) return;
+    setDeleteBusy(true);
+    setDeleteError("");
+    try {
+      await deleteDrink(pendingDelete.id);
+      await reload();
+      setPendingDelete(null);
+    } catch (e) {
+      setDeleteError(e instanceof Error ? e.message : "删除失败，请重试");
+    } finally {
+      setDeleteBusy(false);
+    }
   };
 
   // ---- 拍照导入 ----
@@ -224,11 +241,20 @@ export function MenuConfigPage() {
         desc="维护酒款信息与「设计初衷」。AI 分析将把用户真实行为与设计初衷比对，输出匹配度与经营建议。"
       />
 
+      {loadError && (
+        <Alert className="mb-4">
+          {loadError}
+          <button className="ml-3 underline hover:text-red-200" onClick={() => void reload()}>
+            重试
+          </button>
+        </Alert>
+      )}
+
       <div className="card p-6">
         <div className="mb-4 flex items-center justify-between">
           <h2 className="text-lg font-semibold text-stone-100">
             酒款列表
-            <span className="ml-2 text-xs font-normal text-stone-600">{drinks.length} 款</span>
+            <span className="ml-2 text-xs font-normal text-fg-faint">{drinks.length} 款</span>
           </h2>
           <div className="flex items-center gap-3">
             <button className="btn-ghost" onClick={() => setImportOpen(true)}>
@@ -257,8 +283,32 @@ export function MenuConfigPage() {
               </tr>
             </thead>
             <tbody>
+              {loading && drinks.length === 0 && (
+                <tr>
+                  <td colSpan={8} className="border-0 py-4">
+                    <Skeleton className="h-5 w-full" />
+                  </td>
+                </tr>
+              )}
+              {!loading && drinks.length === 0 && (
+                <tr>
+                  <td colSpan={8} className="border-0">
+                    <EmptyState
+                      icon={Wine}
+                      title="暂无酒款"
+                      description="手动新增酒款，或拍照让 AI 识别酒单后一键导入。"
+                      action={
+                        <button className="btn-primary" onClick={openCreate}>
+                          <Plus className="size-4" aria-hidden="true" />
+                          新增酒款
+                        </button>
+                      }
+                    />
+                  </td>
+                </tr>
+              )}
               {drinks.map((d) => (
-                <tr key={d.id} className="hover:bg-white/[0.02]">
+                <tr key={d.id}>
                   <td className="text-stone-100">{d.name}</td>
                   <td>{d.category}</td>
                   <td className="tabular-nums">{d.abv}%</td>
@@ -267,9 +317,9 @@ export function MenuConfigPage() {
                   <td className="max-w-64 text-stone-400">{d.designIntent}</td>
                   <td>
                     {d.active ? (
-                      <span className="text-emerald-400">在售</span>
+                      <Badge tone={saleStatusMeta.on.tone}>{saleStatusMeta.on.label}</Badge>
                     ) : (
-                      <span className="text-stone-600">停售</span>
+                      <Badge tone={saleStatusMeta.off.tone}>{saleStatusMeta.off.label}</Badge>
                     )}
                   </td>
                   <td>
@@ -283,7 +333,10 @@ export function MenuConfigPage() {
                       </button>
                       <button
                         className="rounded p-1.5 text-stone-500 hover:bg-red-500/10 hover:text-red-400"
-                        onClick={() => void remove(d)}
+                        onClick={() => {
+                          setDeleteError("");
+                          setPendingDelete(d);
+                        }}
                         aria-label={`删除 ${d.name}`}
                       >
                         <Trash2 className="size-4" aria-hidden="true" />
@@ -352,11 +405,7 @@ export function MenuConfigPage() {
               在售
             </label>
 
-            {error && (
-              <p className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">
-                {error}
-              </p>
-            )}
+            {error && <Alert>{error}</Alert>}
 
             <div className="flex justify-end gap-3 pt-2">
               <button className="btn-ghost" onClick={close}>取消</button>
@@ -369,25 +418,7 @@ export function MenuConfigPage() {
       )}
 
       {importOpen && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
-          onClick={closeImport}
-        >
-          <div
-            className="card max-h-[85vh] w-full max-w-3xl overflow-y-auto bg-[#161311] p-6"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="mb-5 flex items-center justify-between">
-              <h2 className="text-lg font-semibold text-stone-100">拍照导入酒单</h2>
-              <button
-                onClick={closeImport}
-                className="rounded p-1 text-stone-500 hover:text-stone-200"
-                aria-label="关闭"
-              >
-                ✕
-              </button>
-            </div>
-
+        <Modal title="拍照导入酒单" size="3xl" preventClose onClose={closeImport}>
             {importItems.length === 0 ? (
               <div className="space-y-4">
                 <input
@@ -429,21 +460,17 @@ export function MenuConfigPage() {
                   </>
                 ) : (
                   <button
-                    className="flex w-full flex-col items-center gap-3 rounded-xl border-2 border-dashed border-white/15 px-6 py-12 text-stone-500 transition-colors hover:border-amber-500/40 hover:text-stone-300"
+                    className="flex w-full flex-col items-center gap-3 rounded-xl border-2 border-dashed border-white/15 px-6 py-12 text-fg-muted transition-colors hover:border-amber-500/40 hover:text-stone-300"
                     onClick={() => fileRef.current?.click()}
                   >
                     <Camera className="size-8" aria-hidden="true" />
                     <span className="text-sm">点击拍照或选择酒单照片</span>
-                    <span className="text-xs text-stone-600">
+                    <span className="text-xs text-fg-faint">
                       AI 将自动识别酒名、品类、度数、价格与风味，并生成卡片配色
                     </span>
                   </button>
                 )}
-                {importError && (
-                  <p className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">
-                    {importError}
-                  </p>
-                )}
+                {importError && <Alert>{importError}</Alert>}
               </div>
             ) : (
               <div className="space-y-4">
@@ -534,11 +561,7 @@ export function MenuConfigPage() {
                     );
                   })}
                 </div>
-                {importError && (
-                  <p className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">
-                    {importError}
-                  </p>
-                )}
+                {importError && <Alert>{importError}</Alert>}
                 <div className="flex justify-end gap-3 pt-2">
                   <button className="btn-ghost" onClick={closeImport}>取消</button>
                   <button
@@ -551,9 +574,29 @@ export function MenuConfigPage() {
                 </div>
               </div>
             )}
-          </div>
-        </div>
+        </Modal>
       )}
+
+      <ConfirmDialog
+        open={pendingDelete !== null}
+        title="删除酒款"
+        danger
+        busy={deleteBusy}
+        confirmText="删除"
+        description={
+          pendingDelete && (
+            <>
+              确定删除「{pendingDelete.name}」？已有会话数据不受影响，但统计将无法关联。
+              {deleteError && <Alert className="mt-3">{deleteError}</Alert>}
+            </>
+          )
+        }
+        onConfirm={() => void remove()}
+        onCancel={() => {
+          setPendingDelete(null);
+          setDeleteError("");
+        }}
+      />
     </div>
   );
 }

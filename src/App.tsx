@@ -87,7 +87,7 @@ function Sidebar({
           >
             <Icon className="size-4" aria-hidden="true" />
             <span className="flex-1">{label}</span>
-            <span className="display-en text-[10px] text-stone-600 group-[.active]:text-amber-500/70">
+            <span className="display-en text-[10px] text-fg-faint group-[.active]:text-amber-500/70">
               {en}
             </span>
           </NavLink>
@@ -102,11 +102,11 @@ function Sidebar({
         >
           <ExternalLink className="size-4" aria-hidden="true" />
           <span className="flex-1">产品介绍站</span>
-          <span className="display-en text-[10px] text-stone-600">SITE</span>
+          <span className="display-en text-[10px] text-fg-faint">SITE</span>
         </a>
       </div>
       <div className="border-t border-white/10 px-6 py-4">
-        <p className="text-xs text-stone-600">数据状态</p>
+        <p className="text-xs text-fg-faint">数据状态</p>
         <p
           className={`mt-1 flex items-center gap-2 text-sm ${deviceOnline ? "text-emerald-300" : "text-stone-500"}`}
           data-testid="device-status"
@@ -120,7 +120,7 @@ function Sidebar({
       <div className="flex items-center justify-between border-t border-white/10 px-6 py-4">
         <div className="min-w-0">
           <p className="truncate text-sm text-stone-300">{username}</p>
-          <p className="text-xs text-stone-600">商家账号</p>
+          <p className="text-xs text-fg-faint">商家账号</p>
         </div>
         <button
           className="rounded p-1.5 text-stone-500 transition-colors hover:bg-white/5 hover:text-red-400"
@@ -171,7 +171,7 @@ export default function App() {
   if (authState === "loading") {
     return (
       <div className="flex min-h-dvh items-center justify-center">
-        <p className="display-en text-sm text-stone-600">LOADING…</p>
+        <p className="display-en text-sm text-fg-faint">LOADING…</p>
       </div>
     );
   }
