@@ -11,7 +11,6 @@ import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 const PBKDF2_ITERATIONS = 50_000;
 const TOKEN_TTL_SECONDS = 7 * 24 * 3600;
 const ANALYZE_MIN_INTERVAL_MS = 20_000;
-const VISION_MODEL = "@cf/meta/llama-4-scout-17b-16e-instruct";
 const TEXT_MODEL = "@cf/meta/llama-4-scout-17b-16e-instruct";
 const IMAGE_MODEL = "@cf/black-forest-labs/flux-1-schnell";
 const IMPRINT_LINE_MIN_INTERVAL_MS = 1_200;
@@ -20,7 +19,11 @@ const CHAT_MIN_INTERVAL_MS = 1_500;
 const AI_NOTE_MIN_INTERVAL_MS = 3_000;
 const DRINK_IMAGE_MIN_INTERVAL_MS = 8_000;
 const DRINK_IMAGE_KEY_PREFIX = "drinkimg:";
-const DRINK_IMAGE_MAX_BYTES = 400 * 1024;
+// 免费额度 1 万 neurons/天，flux-1-schnell 实测 282.5 neurons/张 → 理论约 35 张；留余量给 chat/ai-note 等文本调用
+const DRINK_IMAGE_DAILY_LIMIT = 30;
+const DRINK_IMAGE_QUOTA_PREFIX = "imgquota:";
+// 透明抠图 PNG 体积大于 JPEG，但图片本体只进 KV（不进 /api/data 快照），上限可放宽
+const DRINK_IMAGE_MAX_BYTES = 900 * 1024;
 let lastImprintLineAt = 0;
 let lastMenuImportAt = 0;
 let lastChatAt = 0;
@@ -144,6 +147,8 @@ const MenuDrinkSchema = z.object({
   price: z.number().min(0),
   flavor: z.string(),
   designIntent: z.string(),
+  glass: z.string(),
+  ingredients: z.string(),
 });
 
 const CardStyleSchema = z.object({
@@ -160,8 +165,10 @@ const OCR_FIELDS = [
   "category：品类（如 经典鸡尾酒/威士忌/精酿啤酒/葡萄酒，未知填 其他）",
   "abv：酒精度数字（不带 % 号，未知填 0）",
   "price：人民币价格数字（不带 ￥ 号，未知填 0）",
-  "flavor：一句话风味描述（如「草本苦甜，橙皮油脂香」；未知填 未知）",
+  "flavor：一句话风味描述（口感与香气，如「草本苦甜，橙皮油脂香」；不要把原料清单塞进来；未知填 未知）",
   "designIntent：设计初衷，即预期的用户饮用行为（如「预期用户小口慢品、多次拿起、停留时间长」；可结合酒款类型推断）",
+  "glass：杯型（如 古典杯/马天尼杯/高球杯/柯林杯/玛格丽特杯；图中没写可按酒款推断，拿不准填空字符串）",
+  "ingredients：详细配料清单（照抄该酒款下的原料与用量，用「、」分隔，如「金酒 45ml、干味美思 15ml、橄榄 1 颗」；图中没有填空字符串）",
 ].join("\n");
 
 const TRANSCRIBE_PROMPT = [
@@ -172,7 +179,7 @@ const TRANSCRIBE_PROMPT = [
 const OCR_PROMPT = [
   "你是酒吧酒单信息提取助手。从下面的酒单文字抄录中提取全部酒款，输出严格的 JSON 数组。",
   OCR_FIELDS,
-  "注意：只提取酒单条目本身，配料表（如威士忌、苦精、糖浆等原料文字）不要单独当成酒款；价格与酒精度请仔细核对数字。",
+  "注意：配料表（如威士忌、苦精、糖浆等原料文字）要归入对应酒款的 ingredients 字段，不要单独当成酒款；价格与酒精度请仔细核对数字。",
   "只输出 JSON 数组本身：第一个字符必须是 [，输出紧凑 JSON（不要换行和缩进），不要 markdown 代码块，不要任何解释文字。",
   "抄录中没有酒单内容时输出 []。",
   "酒单文字抄录：",
@@ -191,14 +198,18 @@ const STYLE_PROMPT = [
 
 /**
  * 酒款配图固定风格：对齐 src/assets/cocktails 现有 12 张素材的共同特征
- * —— 纯白无缝背景 + 影棚背光透亮 + 单杯中心构图 + 1:1 无文字/人物/道具。
+ * —— 纯白无缝背景（前端抠成透明 PNG，供卡片合成）+ 影棚背光透亮 + 单杯中心构图。
+ * 背景必须干净、无渐晕、且**无投影**：白底上的浅灰投影抠不干净会留灰雾，
+ * 而卡片侧已有 CSS drop-shadow 负责投影，不需要图里自带。
  */
 const DRINK_IMAGE_STYLE_PROMPT = [
   "professional beverage advertising photograph on a seamless pure white background",
   "a single glass centered and filling most of the frame",
-  "bright even studio lighting, neutral white backdrop with no color cast, warm backlight glowing through the drink",
-  "sharp glass highlights, delicate condensation, subtle reflection beneath the glass",
-  "clean tidy composition on a bare surface, absolutely no spilled liquid, no splash, no puddle",
+  "flat evenly lit pure white 255 backdrop edge to edge, no vignette, no gradient, no color cast",
+  "crisp studio lighting, warm backlight glowing through the drink",
+  "sharp glass highlights, delicate condensation",
+  "the glass floats with absolutely no shadow cast on the backdrop, no ground shadow, no reflection, no horizon line, no table edge",
+  "clean tidy composition, absolutely no spilled liquid, no splash, no puddle",
   "ultra sharp focus, high detail, luxurious and appetizing, square 1:1",
   "no text, no letters, no logo, no watermark, no hands, no people, no extra props",
 ].join(", ");
@@ -277,6 +288,20 @@ function base64ImageMime(base64) {
   return "image/png";
 }
 
+/** 当日配图生成用量（UTC 日切；KV 无原子自增，但单商家 + 8s 节流下并发可忽略） */
+async function drinkImageQuota(env, { consume = false } = {}) {
+  const day = new Date().toISOString().slice(0, 10);
+  const key = `${DRINK_IMAGE_QUOTA_PREFIX}${day}`;
+  const used = Number(await env.TIPSY_KV.get(key)) || 0;
+  const remaining = Math.max(0, DRINK_IMAGE_DAILY_LIMIT - used);
+  if (consume && remaining > 0) {
+    // 2 天 TTL：跨日自动清零，也不必手工清理
+    await env.TIPSY_KV.put(key, String(used + 1), { expirationTtl: 172_800 });
+    return { used: used + 1, remaining: remaining - 1 };
+  }
+  return { used, remaining };
+}
+
 /** 文生图返回形态不一：flux 为 { image: base64 }，部分模型直接返回 PNG/JPEG 字节流 */
 async function imageResultToDataUrl(out) {
   if (!out) return "";
@@ -308,6 +333,8 @@ function sanitizeMenuItems(items) {
       price: Math.max(0, Number.parseFloat(String(raw?.price ?? "").replace(/[^\d.]/g, "")) || 0),
       flavor: String(raw?.flavor ?? "").trim() || "未知",
       designIntent: String(raw?.designIntent ?? "").trim(),
+      glass: String(raw?.glass ?? "").trim(),
+      ingredients: String(raw?.ingredients ?? "").trim(),
     }))
     .filter((d) => d.name);
 }
@@ -435,6 +462,39 @@ async function analyze(env, payload) {
     console.warn(`[analysis] 洞察数不足（${report.drinkInsights.length}/${expected}），重试 ${i + 1}/${attempts - 1}`);
   }
   throw new Error("模型多次输出均缺少酒款洞察，请重试");
+}
+
+/**
+ * 中转站模型调用（与 /api/analyze 同一套凭据）。
+ * content 传字符串或内容块数组（单轮），或多轮时改用 system + messages。
+ * 视觉需视中转站支持情况配置 ANTHROPIC_VISION_MODEL。
+ */
+async function runModel(
+  env,
+  content,
+  { maxTokens = 4096, temperature = 0.1, vision = false, system, messages } = {},
+) {
+  const client = new Anthropic({
+    authToken: env.ANTHROPIC_AUTH_TOKEN,
+    baseURL: env.ANTHROPIC_BASE_URL,
+  });
+  const msg = await client.messages.create({
+    model: (vision && env.ANTHROPIC_VISION_MODEL) || env.ANTHROPIC_MODEL || "claude-opus-4-7",
+    max_tokens: maxTokens,
+    temperature,
+    ...(system ? { system } : {}),
+    messages: messages ?? [{ role: "user", content }],
+  });
+  const text = msg.content
+    .filter((b) => b.type === "text")
+    .map((b) => b.text)
+    .join("\n");
+  if (!text.trim()) {
+    throw new Error(
+      `模型返回空文本（stop_reason=${msg.stop_reason}；内容块=${msg.content.map((b) => b.type).join(",") || "无"}）`,
+    );
+  }
+  return text;
 }
 
 // ---- ESP 协议 v1（规格：ESP与后端的对接.pdf）----
@@ -799,7 +859,7 @@ function detectSessionEvents(packets) {
 
 const EVENT_TYPE_CN = { pickup: "拿起酒杯", putdown: "放回桌面", sip: "饮用", shake: "摇晃", chug: "一饮而尽" };
 
-/** 单场会话 AI 解读：事件时间线 + 会话指标 → 一段行为画像（Workers AI，与 imprint-line 同管道） */
+/** 单场会话 AI 解读：事件时间线 + 会话指标 → 一段行为画像（走中转站，不占 Workers AI 额度） */
 async function handleSessionAiNote(request, env, sessionId) {
   const username = await getAuthUser(request, env);
   if (!username) return sendJson({ error: "未登录或登录已过期" }, 401);
@@ -811,7 +871,7 @@ async function handleSessionAiNote(request, env, sessionId) {
     );
   }
   lastAiNoteAt = Date.now();
-  if (!env.AI) return sendJson({ error: "AI 服务未配置" }, 503);
+  if (!env.ANTHROPIC_AUTH_TOKEN) return sendJson({ error: "模型凭据未配置" }, 503);
   const session = await env.TIPSY_DB.prepare("SELECT id, user_id, drink, started_at_ms, completed_at_ms FROM sessions WHERE id = ?")
     .bind(sessionId)
     .first();
@@ -842,12 +902,8 @@ async function handleSessionAiNote(request, env, sessionId) {
     "只输出这段文字本身，不要标题、引号、列表符号或 markdown。",
   ].join("\n");
   try {
-    const out = await env.AI.run(TEXT_MODEL, {
-      messages: [{ role: "user", content: prompt }],
-      max_tokens: 320,
-      temperature: 0.7,
-    });
-    const note = String(out?.response ?? out?.result ?? "")
+    // 中转站模型走思考模式，thinking 块会先吃掉预算；预算太小会只剩 thinking、没有 text
+    const note = (await runModel(env, prompt, { maxTokens: 2048, temperature: 0.7 }))
       .trim()
       .replace(/^["「『]|["」』]$/g, "")
       .replace(/\n+/g, " ");
@@ -1216,7 +1272,7 @@ export async function onRequest(context) {
       );
     }
     lastMenuImportAt = Date.now();
-    if (!env.AI) return sendJson({ error: "AI 服务未配置" }, 503);
+    if (!env.ANTHROPIC_AUTH_TOKEN) return sendJson({ error: "模型凭据未配置" }, 503);
     let body;
     try {
       body = await readBody(request);
@@ -1229,30 +1285,27 @@ export async function onRequest(context) {
     }
     let rawOcr = "";
     try {
-      // 第一步：视觉抄录全部文字（OpenAI 式 image_url 内容数组）
-      const ocr = await env.AI.run(VISION_MODEL, {
-        messages: [
+      // 第一步：视觉抄录全部文字（Anthropic 内容块，data URL 拆成 media_type + base64）
+      const transcript = await runModel(
+        env,
+        [
+          { type: "text", text: TRANSCRIBE_PROMPT },
           {
-            role: "user",
-            content: [
-              { type: "text", text: TRANSCRIBE_PROMPT },
-              { type: "image_url", image_url: { url: image } },
-            ],
+            type: "image",
+            source: {
+              type: "base64",
+              media_type: /^data:(image\/[\w+.-]+)/.exec(image)?.[1] ?? "image/png",
+              data: image.slice(image.indexOf(",") + 1),
+            },
           },
         ],
-        max_tokens: 4096,
-        temperature: 0.1,
-      });
-      const transcript = extractText(ocr?.response ?? ocr?.result ?? "");
-      if (!transcript.trim()) throw new Error(`视觉抄录为空：${JSON.stringify(ocr).slice(0, 300)}`);
+        { vision: true },
+      );
+      if (!transcript.trim()) throw new Error("视觉抄录为空，请重试");
       rawOcr = transcript.slice(0, 800);
       // 第二步：文本模式从抄录提取结构化 JSON
-      const textOut = await env.AI.run(TEXT_MODEL, {
-        messages: [{ role: "user", content: OCR_PROMPT + transcript }],
-        max_tokens: 4096,
-        temperature: 0.1,
-      });
-      const rawItems = resolveArray(textOut?.response ?? textOut?.result ?? "", JSON.stringify(textOut).slice(0, 300));
+      const textOut = await runModel(env, OCR_PROMPT + transcript, { maxTokens: 8192 });
+      const rawItems = resolveArray(textOut, textOut.slice(0, 300));
       const drinks = sanitizeMenuItems(rawItems).map((d) => {
         const parsed = MenuDrinkSchema.safeParse(d);
         return parsed.success ? parsed.data : d;
@@ -1260,20 +1313,13 @@ export async function onRequest(context) {
       if (drinks.length) {
         let styles = { success: false, data: [] };
         try {
-          const styleOut = await env.AI.run(TEXT_MODEL, {
-            messages: [
-              {
-                role: "user",
-                content:
-                  STYLE_PROMPT +
-                  JSON.stringify(drinks.map((d) => ({ name: d.name, category: d.category, flavor: d.flavor }))),
-              },
-            ],
-            max_tokens: 2048,
-            temperature: 0.7,
-          });
-          const styleOutRaw = styleOut?.response ?? styleOut?.result ?? "";
-          styles = z.array(CardStyleSchema).safeParse(resolveArray(styleOutRaw, JSON.stringify(styleOut).slice(0, 300)));
+          const styleOutRaw = await runModel(
+            env,
+            STYLE_PROMPT +
+              JSON.stringify(drinks.map((d) => ({ name: d.name, category: d.category, flavor: d.flavor }))),
+            { maxTokens: 8192, temperature: 0.7 },
+          );
+          styles = z.array(CardStyleSchema).safeParse(resolveArray(styleOutRaw, styleOutRaw.slice(0, 300)));
         } catch (error) {
           console.warn("[menu-import] 卡片风格生成失败，使用默认配色:", error.message);
         }
@@ -1301,6 +1347,17 @@ export async function onRequest(context) {
     }
     lastDrinkImageAt = Date.now();
     if (!env.AI) return sendJson({ error: "AI 服务未配置" }, 503);
+    const quota = await drinkImageQuota(env);
+    if (quota.remaining <= 0) {
+      return sendJson(
+        {
+          error: `今日配图生成已达上限（${DRINK_IMAGE_DAILY_LIMIT} 张），请明天再试`,
+          limit: DRINK_IMAGE_DAILY_LIMIT,
+          remaining: 0,
+        },
+        429,
+      );
+    }
     let body;
     try {
       body = await readBody(request);
@@ -1322,12 +1379,7 @@ export async function onRequest(context) {
     try {
       let visual = "";
       try {
-        const descOut = await env.AI.run(TEXT_MODEL, {
-          messages: [{ role: "user", content: DRINK_IMAGE_DESC_PROMPT + brief }],
-          max_tokens: 200,
-          temperature: 0.4,
-        });
-        visual = extractText(descOut?.response ?? descOut?.result ?? "")
+        visual = (await runModel(env, DRINK_IMAGE_DESC_PROMPT + brief, { maxTokens: 2048, temperature: 0.4 }))
           .replace(/[\r\n]+/g, " ")
           .replace(/^["'\s]+|["'\s]+$/g, "")
           .slice(0, 400)
@@ -1336,11 +1388,17 @@ export async function onRequest(context) {
         console.warn("[drink-image] 视觉描述生成失败，回退原始字段:", error.message);
       }
       const prompt = `${DRINK_IMAGE_STYLE_PROMPT}, subject: ${visual || brief}`;
+      // 只出一张：实测 flux-1-schnell 约 280 neurons/张，免费额度 1 万/天，出 4 张只能生成 8 次、出 1 张能生成 35 次
       const out = await env.AI.run(IMAGE_MODEL, { prompt, steps: 8 });
       const image = await imageResultToDataUrl(out);
       if (!image) throw new Error(`模型未返回图片：${JSON.stringify(out).slice(0, 200)}`);
-      return sendJson({ image, prompt });
+      // 只在真正出图后计数，失败/额度被拒时不占用户配额
+      const { remaining } = await drinkImageQuota(env, { consume: true });
+      return sendJson({ images: [image], prompt, remaining });
     } catch (error) {
+      if (/neuron|allocation/i.test(error.message)) {
+        return sendJson({ error: "今日 AI 免费额度已用完，请稍后再试" }, 429);
+      }
       return sendJson({ error: `生成失败：${error.message}` }, 502);
     }
   }
@@ -1395,7 +1453,7 @@ export async function onRequest(context) {
       );
     }
     lastImprintLineAt = Date.now();
-    if (!env.AI) return sendJson({ error: "AI 服务未配置" }, 503);
+    if (!env.ANTHROPIC_AUTH_TOKEN) return sendJson({ error: "模型凭据未配置" }, 503);
     let body;
     try {
       body = await readBody(request);
@@ -1411,12 +1469,8 @@ export async function onRequest(context) {
       "要求：15-30 字中文，诗意、克制、有画面感，不要引号与表情，只输出这一句话本身。",
     ].join("\n");
     try {
-      const out = await env.AI.run(TEXT_MODEL, {
-        messages: [{ role: "user", content: prompt }],
-        max_tokens: 128,
-        temperature: 0.9,
-      });
-      const line = String(out?.response ?? out?.result ?? "")
+      // 中转站模型走思考模式，thinking 块会先吃掉预算；预算太小会只剩 thinking、没有 text
+      const line = (await runModel(env, prompt, { maxTokens: 2048, temperature: 0.9 }))
         .trim()
         .replace(/^["「『]|["」』]$/g, "")
         .replace(/\n+/g, " ");
@@ -1438,7 +1492,7 @@ export async function onRequest(context) {
       );
     }
     lastChatAt = Date.now();
-    if (!env.AI) return sendJson({ error: "AI 服务未配置" }, 503);
+    if (!env.ANTHROPIC_AUTH_TOKEN) return sendJson({ error: "模型凭据未配置" }, 503);
     let body;
     try {
       body = await readBody(request);
@@ -1455,17 +1509,18 @@ export async function onRequest(context) {
     }
     const context = String(body.context ?? "").slice(0, 1_500);
     try {
-      const out = await env.AI.run(TEXT_MODEL, {
-        messages: [
-          { role: "system", content: CHAT_SYSTEM_PROMPT },
-          { role: "user", content: `【当前数据摘要】\n${context || "（暂无数据摘要）"}\n\n以上是后台背景信息，请勿直接复述，仅供回答时参考。` },
-          { role: "assistant", content: "好的，我已了解当前数据情况，请提问。" },
-          ...messages,
-        ],
-        max_tokens: 1_024,
-        temperature: 0.6,
-      });
-      const reply = extractText(out?.response ?? out?.result ?? "").trim();
+      const reply = (
+        await runModel(env, null, {
+          system: CHAT_SYSTEM_PROMPT,
+          messages: [
+            { role: "user", content: `【当前数据摘要】\n${context || "（暂无数据摘要）"}\n\n以上是后台背景信息，请勿直接复述，仅供回答时参考。` },
+            { role: "assistant", content: "好的，我已了解当前数据情况，请提问。" },
+            ...messages,
+          ],
+          maxTokens: 2048,
+          temperature: 0.6,
+        })
+      ).trim();
       if (!reply) throw new Error("模型返回空回复");
       return sendJson({ reply });
     } catch (error) {

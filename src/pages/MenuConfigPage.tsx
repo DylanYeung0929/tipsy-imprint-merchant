@@ -11,6 +11,9 @@ import {
   updateDrink,
 } from "../lib/api";
 import { useLoad } from "../lib/useLoad";
+import { makeCutout } from "../lib/cutout";
+import { COCKTAIL_IMAGES } from "../lib/cocktailImages";
+import { cocktailImageFor } from "../lib/mock";
 import {
   Alert,
   Badge,
@@ -108,6 +111,7 @@ export function MenuConfigPage() {
   const [deleteError, setDeleteError] = useState("");
   const [imageBusy, setImageBusy] = useState(false);
   const [imageError, setImageError] = useState("");
+  const [imageRemaining, setImageRemaining] = useState<number | null>(null);
   /** 本次生成实际使用的风格提示词（展示用） */
   const [imagePrompt, setImagePrompt] = useState("");
 
@@ -178,7 +182,10 @@ export function MenuConfigPage() {
     }
   };
 
-  /** 按固定风格生成配图：AI 出图 → 压到 512px JPEG → 存 KV 换短链（避免快照膨胀） */
+  /**
+   * 按固定风格生成多张候选配图：AI 出图 → 本地抠成透明背景 → 商家挑一张。
+   * 抠图覆盖率太低的（模型没给白底）排在后面并提示重新生成。
+   */
   const generateImage = async () => {
     if (imageBusy) return;
     if (!form.glass.trim() && !form.ingredients.trim()) {
@@ -188,16 +195,23 @@ export function MenuConfigPage() {
     setImageBusy(true);
     setImageError("");
     try {
-      const { image, prompt } = await generateDrinkImage({
+      const { images, prompt, remaining } = await generateDrinkImage({
         name: form.name.trim(),
         glass: form.glass.trim(),
         ingredients: form.ingredients.trim(),
         flavor: form.flavor.trim(),
       });
-      const compact = await shrinkImage(image, 512, 0.82);
-      const url = await storeDrinkImage(compact);
-      setForm((f) => ({ ...f, image: url }));
+      const cutouts = (await Promise.all(images.map((d) => makeCutout(d)))).sort(
+        (a, b) => b.coverage - a.coverage,
+      );
       setImagePrompt(prompt);
+      setImageRemaining(typeof remaining === "number" ? remaining : null);
+      if (!cutouts.some((c) => c.coverage >= 0.3)) {
+        setImageError("本次背景不够干净，抠图可能不完整，建议重新生成");
+      }
+      // 存 KV 换短链（图片本体不进快照，避免 /api/data 膨胀）
+      const url = await storeDrinkImage(cutouts[0].url);
+      setForm((f) => ({ ...f, image: url }));
     } catch (e) {
       setImageError(e instanceof Error ? e.message : "生成失败，请重试");
     } finally {
@@ -289,6 +303,8 @@ export function MenuConfigPage() {
           price: it.price,
           flavor: it.flavor,
           designIntent: it.designIntent || "待补充设计初衷",
+          glass: it.glass ?? "",
+          ingredients: it.ingredients ?? "",
           cardStyle: it.cardStyle,
           active: true,
         });
@@ -384,12 +400,25 @@ export function MenuConfigPage() {
             <tr key={d.id}>
               <td className="text-stone-100">
                 <span className="flex items-center gap-2.5">
-                  {d.image && (
+                  {d.image ? (
                     <img
                       src={d.image}
                       alt=""
-                      className="size-9 shrink-0 rounded-md border border-white/10 bg-white object-cover"
+                      className="size-9 shrink-0 rounded-md bg-ink-3 object-contain"
                     />
+                  ) : COCKTAIL_IMAGES[cocktailImageFor(d.name) ?? ""] ? (
+                    <img
+                      src={COCKTAIL_IMAGES[cocktailImageFor(d.name) ?? ""]}
+                      alt=""
+                      className="size-9 shrink-0 rounded-md bg-ink-3 object-contain"
+                    />
+                  ) : (
+                    <span
+                      aria-hidden="true"
+                      className="flex size-9 shrink-0 items-center justify-center rounded-md border border-dashed border-white/12 text-fg-faint"
+                    >
+                      <Wine className="size-4" />
+                    </span>
                   )}
                   {d.name}
                 </span>
@@ -495,20 +524,17 @@ export function MenuConfigPage() {
 
             <div className="rounded-xl border border-white/10 bg-white/[0.02] p-3">
               <div className="flex items-start gap-3">
-                {form.image ? (
-                  <img
-                    src={form.image}
-                    alt="酒款配图"
-                    className="size-24 shrink-0 rounded-lg border border-white/10 bg-white object-cover"
-                  />
-                ) : (
-                  <div className="flex size-24 shrink-0 items-center justify-center rounded-lg border border-dashed border-white/15 text-fg-faint">
-                    <ImagePlus className="size-6" aria-hidden="true" />
-                  </div>
-                )}
+                <div className="flex size-24 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-white/10 bg-ink-3">
+                  {form.image ? (
+                    <img src={form.image} alt="酒款配图" className="size-full object-contain" />
+                  ) : (
+                    <ImagePlus className="size-6 text-fg-faint" aria-hidden="true" />
+                  )}
+                </div>
                 <div className="min-w-0 flex-1 space-y-2">
                   <p className="text-xs text-stone-400">
-                    AI 按固定风格出图：纯白背景 + 影棚背光 + 单杯中心构图，与内置 12 款酒图统一
+                    AI 按固定风格出图：纯白背景 + 影棚背光 + 单杯中心构图；<br />
+                    生成后自动抠去背景，透明底可直接用于印记卡片
                   </p>
                   <div className="flex flex-wrap items-center gap-3">
                     <button
@@ -520,7 +546,7 @@ export function MenuConfigPage() {
                       {imageBusy ? (
                         <>
                           <Loader2 className="size-4 animate-spin" aria-hidden="true" />
-                          生成中（约 10 秒）…
+                          生成中（约 10–20 秒）…
                         </>
                       ) : (
                         <>
@@ -543,6 +569,9 @@ export function MenuConfigPage() {
                     )}
                   </div>
                   {imageError && <Alert>{imageError}</Alert>}
+                  {imageRemaining !== null && !imageError && (
+                    <p className="text-caption text-fg-faint">今日还可生成 {imageRemaining} 张配图</p>
+                  )}
                   {imagePrompt && (
                     <details className="text-caption text-fg-faint">
                       <summary className="cursor-pointer hover:text-stone-400">
@@ -723,12 +752,26 @@ export function MenuConfigPage() {
                             onChange={(e) => setItem(i, "price", Number(e.target.value))}
                             aria-label="价格"
                           />
+                          <input
+                            className="input w-32"
+                            value={it.glass ?? ""}
+                            onChange={(e) => setItem(i, "glass", e.target.value)}
+                            aria-label="识别杯型"
+                            placeholder="杯型"
+                          />
                         </div>
                         <input
                           className="input mt-2 w-full"
                           value={it.flavor}
                           onChange={(e) => setItem(i, "flavor", e.target.value)}
                           aria-label="风味"
+                        />
+                        <input
+                          className="input mt-2 w-full"
+                          value={it.ingredients ?? ""}
+                          onChange={(e) => setItem(i, "ingredients", e.target.value)}
+                          aria-label="识别配料"
+                          placeholder="详细配料"
                         />
                       </div>
                     );

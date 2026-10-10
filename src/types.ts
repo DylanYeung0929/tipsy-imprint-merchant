@@ -122,6 +122,8 @@ export interface MenuImportItem {
   price: number;
   flavor: string;
   designIntent: string;
+  glass?: string;
+  ingredients?: string;
   cardStyle?: CardStyle;
 }
 

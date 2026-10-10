@@ -87,7 +87,7 @@ export function ImprintCard({
   const pid = useId().replace(/[:]/g, "");
   const style = drink?.cardStyle ?? { pattern: "slant" as const, bgFrom: "#1c1917", bgTo: "#0c0a09", accent: "#fbbf24" };
   const imgKey = cocktailImageFor(drink?.name ?? "");
-  const imgSrc = imgKey ? COCKTAIL_IMAGES[imgKey] : undefined;
+  const imgSrc = drink?.image ?? (imgKey ? COCKTAIL_IMAGES[imgKey] : undefined);
   const line = aiLine ?? imprint.line;
   const cardRef = useRef<HTMLElement>(null);
   const saveBtnRef = useRef<HTMLButtonElement>(null);

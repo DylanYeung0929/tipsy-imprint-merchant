@@ -263,7 +263,7 @@ export async function generateDrinkImage(payload: {
   glass: string;
   ingredients: string;
   flavor: string;
-}): Promise<{ image: string; prompt: string }> {
+}): Promise<{ images: string[]; prompt: string; remaining?: number }> {
   const res = await fetch(`${API_BASE}/drink-image`, {
     method: "POST",
     headers: {
@@ -273,13 +273,14 @@ export async function generateDrinkImage(payload: {
     body: JSON.stringify(payload),
   });
   const data = (await res.json().catch(() => ({}))) as {
-    image?: string;
+    images?: string[];
     prompt?: string;
+    remaining?: number;
     error?: string;
   };
   if (!res.ok || data.error) throw new Error(data.error ?? `生成失败（${res.status}）`);
-  if (!data.image) throw new Error("AI 未返回图片，请重试");
-  return { image: data.image, prompt: data.prompt ?? "" };
+  if (!data.images?.length) throw new Error("AI 未返回图片，请重试");
+  return { images: data.images, prompt: data.prompt ?? "", remaining: data.remaining };
 }
 
 /** 酒款配图：压缩图写入 KV，返回可直链短 URL（酒款记录只存这个短路径） */
