@@ -15,3 +15,7 @@ vite.config.d.ts
 server/.pepper
 server/auth.json
 server/data/
+
+# Python 字节码（hardware/ble_bridge.py）
+__pycache__/
+*.pyc
